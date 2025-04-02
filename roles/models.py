@@ -15,6 +15,7 @@ class SuperadminInvitation(models.Model):
     is_used = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField()
+    pin_attempts = models.IntegerField(default=0)
 
     def is_expired(self):
         return timezone.now() > self.expires_at

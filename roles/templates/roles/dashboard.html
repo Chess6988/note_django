@@ -1,0 +1,20 @@
+{% extends 'base.html' %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h2>Superadmin Dashboard</h2>
+<a href="{% url 'invite_superadmin' %}" class="btn btn-success mb-3">Invite New Superadmin</a>
+<h3>Pending Invitations</h3>
+<ul class="list-group">
+    {% for invitation in invitations %}
+    <li class="list-group-item">
+        {{ invitation.recipient_name }} | 
+        Link: <input type="text" value="{{ request.scheme }}://{{ request.get_host }}/accounts/verify-invitation/{{ invitation.token }}/" readonly>
+        <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy Link</button> |
+        PIN: <input type="text" value="{{ invitation.pin }}" readonly>
+        <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy PIN</button>
+    </li>
+    {% empty %}
+    <li class="list-group-item">No pending invitations.</li>
+    {% endfor %}
+</ul>
+{% endblock %}
