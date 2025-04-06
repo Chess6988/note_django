@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.utils import timezone
 from datetime import timedelta
+from django.core.exceptions import ValidationError
 
 class User(AbstractUser):
     ROLE_CHOICES = [
@@ -28,7 +29,7 @@ class User(AbstractUser):
         elif self.role == 'superadmin':
             return '/superadmin/panel/'
         else:
-            return '/role-not-found/'  # Updated fallback URL
+            return '/role-not-found/'
 
 class Invitation(models.Model):
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
@@ -43,8 +44,8 @@ class Invitation(models.Model):
         blank=True, 
         related_name='invitation'
     )
-    created_at = models.DateTimeField(auto_now_add=True)  # Tracks when the invitation was created
-    expires_at = models.DateTimeField()  # Specifies when the invitation expires
+    created_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField()
     
     def __str__(self):
         return f"Invitation for {self.role} to {self.invitee_email} by {self.inviter}"
@@ -54,7 +55,11 @@ class Invitation(models.Model):
         return timezone.now() > self.expires_at
     
     def save(self, *args, **kwargs):
-        """Automatically set expires_at to 1 minute from creation if not provided."""
+        if self.pk is None:  # Only check when creating a new invitation
+            if self.inviter.role not in ['superadmin', 'admin']:
+                raise ValidationError("Only superadmins and admins can send invitations.")
+            if self.inviter.role == 'admin' and self.role != 'admin':
+                raise ValidationError("Admins can only invite users to become admins.")
         if not self.expires_at:
             self.expires_at = timezone.now() + timedelta(minutes=1)
         super().save(*args, **kwargs)
