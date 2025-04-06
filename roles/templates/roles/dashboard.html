@@ -8,7 +8,7 @@
     {% for invitation in invitations %}
     <li class="list-group-item">
         {{ invitation.recipient_name }} | 
-        Link: <input type="text" value="{{ request.scheme }}://{{ request.get_host }}/accounts/verify-invitation/{{ invitation.token }}/" readonly>
+        Link: <input type="text" value="{{ request.scheme }}://{{ request.get_host }}{% url 'verify_invitation' invitation.token %}" readonly>
         <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy Link</button> |
         PIN: <input type="text" value="{{ invitation.pin }}" readonly>
         <button class="btn btn-sm btn-primary" onclick="navigator.clipboard.writeText(this.previousElementSibling.value)">Copy PIN</button>

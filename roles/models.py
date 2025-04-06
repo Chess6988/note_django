@@ -1,28 +1,60 @@
 from django.db import models
 from django.contrib.auth.models import AbstractUser
-import uuid
 from django.utils import timezone
+from datetime import timedelta
 
 class User(AbstractUser):
-    is_superadmin = models.BooleanField(default=False)
+    ROLE_CHOICES = [
+        ('student', 'Student'),
+        ('teacher', 'Teacher'),
+        ('admin', 'Admin'),
+        ('superadmin', 'Superadmin'),
+    ]
+    
+    role = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    phone_number = models.CharField(max_length=15)
+    email = models.EmailField(unique=True)
+    
+    def __str__(self):
+        return f"{self.first_name} {self.last_name} ({self.role})"
+    
+    def get_redirect_url(self):
+        if self.role == 'student':
+            return '/student/dashboard/'
+        elif self.role == 'teacher':
+            return '/teacher/dashboard/'
+        elif self.role == 'admin':
+            return '/admin/panel/'
+        elif self.role == 'superadmin':
+            return '/superadmin/panel/'
+        else:
+            return '/'
 
-class SuperadminInvitation(models.Model):
-    inviter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='invitations_sent')
-    recipient_name = models.CharField(max_length=100)
-    token = models.UUIDField(default=uuid.uuid4, unique=True)
-    pin = models.CharField(max_length=6)  # 6-digit PIN
-    pin_attempts = models.IntegerField(default=0)  # Track PIN attempts
-    is_used = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
-    expires_at = models.DateTimeField()
-    pin_attempts = models.IntegerField(default=0)
-
+class Invitation(models.Model):
+    role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
+    pin = models.CharField(max_length=10, unique=True)
+    inviter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invitations')
+    invitee_email = models.EmailField()
+    status = models.CharField(max_length=20, default='pending')
+    accepted_by = models.OneToOneField(
+        User, 
+        on_delete=models.SET_NULL, 
+        null=True, 
+        blank=True, 
+        related_name='invitation'
+    )
+    created_at = models.DateTimeField(auto_now_add=True)  # Tracks when the invitation was created
+    expires_at = models.DateTimeField()  # Specifies when the invitation expires
+    
+    def __str__(self):
+        return f"Invitation for {self.role} to {self.invitee_email} by {self.inviter}"
+    
     def is_expired(self):
+        """Returns True if the invitation has expired, False otherwise."""
         return timezone.now() > self.expires_at
-
+    
     def save(self, *args, **kwargs):
-        if not self.pk:  # Only on creation
-            self.expires_at = timezone.now() + timezone.timedelta(hours=24)  # 24-hour expiry
-            import random
-            self.pin = ''.join([str(random.randint(0, 9)) for _ in range(6)])  # Random 6-digit PIN
+        """Automatically set expires_at to 7 days from creation if not provided."""
+        if not self.expires_at:
+            self.expires_at = timezone.now() + timedelta(days=7)
         super().save(*args, **kwargs)

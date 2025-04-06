@@ -38,7 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-     'roles',
+    'roles',
 ]
 
 MIDDLEWARE = [
@@ -53,10 +53,30 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = 'roles_project.urls'
 
+# settings.py configuration for email backend
+# This configuration is for using Gmail's SMTP server to send emails.
+
+EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
+EMAIL_HOST = 'smtp.gmail.com'  # Gmail SMTP server
+EMAIL_PORT = 587  # Port for TLS
+EMAIL_USE_TLS = True  # Enable TLS
+EMAIL_USE_SSL = False  # SSL should be false if TLS is true
+EMAIL_HOST_USER = 'peanutchess091@gmail.com'  # Your Gmail address
+EMAIL_HOST_PASSWORD = 'oxvk gupz tncs nxrc'  # Your app-specific password (see note below)
+DEFAULT_FROM_EMAIL = 'noreply.kuetevaldes@gmail.com'  # Default from email address
+
+
+CSRF_COOKIE_SAMESITE = 'None'
+CSRF_COOKIE_SECURE = True  # Ensure you're using HTTPS in production
+
+# Make sure session data persists
+SESSION_ENGINE = 'django.contrib.sessions.backends.db'
+
+
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'templates'],
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -130,3 +150,5 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'roles.User'
 
 user = settings.AUTH_USER_MODEL
+LOGIN_URL = '/roles/login/'
+AUTHENTICATION_BACKENDS = ['path.to.EmailBackend']
