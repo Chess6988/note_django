@@ -9,7 +9,7 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
-
+import sys
 from pathlib import Path
 from django.conf import settings
 
@@ -154,4 +154,4 @@ AUTH_USER_MODEL = 'roles.User'
 
 user = settings.AUTH_USER_MODEL
 LOGIN_URL = '/roles/login/'
-AUTHENTICATION_BACKENDS = ['path.to.EmailBackend']
+AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']

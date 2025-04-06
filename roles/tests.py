@@ -1,20 +1,19 @@
 import pytest
-from django.db import IntegrityError
 from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.utils import timezone
 from datetime import timedelta
-from roles.models import (
-    User, Invitation, Annee, Filiere, Niveau, Semestre, Admin, Enseignant, Etudiant,
-    Matiere, MatiereCommune, Note, AdminAnnee, AdminFiliere, AdminSemestre,
-    EnseignantAnnee, EnseignantFiliere, EnseignantMatiere, EnseignantMatiereCommune,
-    EnseignantNiveau, EnseignantSemestre, EtudiantAnnee, EtudiantSemestre,
-    MatiereEtudiant, MatiereCommuneEtudiant
+from .models import (
+    User, Invitation, Annee, Filiere, Niveau, Semestre,
+    Admin, Enseignant, Etudiant, Matiere, MatiereCommune,
+    Note, EnseignantAnnee, EtudiantAnnee, MatiereEtudiant,
+    MatiereCommuneEtudiant, ProfileEnseignant, ProfileEtudiant
 )
 
-# User Model Tests
+# --- User Model Tests ---
 @pytest.mark.django_db
 def test_user_creation():
-    """Test that a user can be created and __str__ returns the expected string."""
+    """Test basic user creation and __str__ method."""
     user = User.objects.create_user(
         username='testuser',
         email='test@example.com',
@@ -25,10 +24,12 @@ def test_user_creation():
         phone_number='1234567890'
     )
     assert str(user) == 'John Doe (etudiant)'
+    assert user.email == 'test@example.com'
+    assert user.phone_number == '1234567890'
 
 @pytest.mark.django_db
 def test_unique_email():
-    """Test that the email field enforces uniqueness."""
+    """Test email uniqueness constraint."""
     User.objects.create_user(
         username='user1',
         email='unique@example.com',
@@ -44,7 +45,7 @@ def test_unique_email():
         )
 
 def test_get_redirect_url():
-    """Test that get_redirect_url returns the correct URL based on role."""
+    """Test get_redirect_url method for each role."""
     roles_urls = {
         'etudiant': '/etudiant/dashboard/',
         'enseignant': '/enseignant/dashboard/',
@@ -55,10 +56,10 @@ def test_get_redirect_url():
         user = User(role=role)
         assert user.get_redirect_url() == expected_url
 
-# Invitation Model Tests
+# --- Invitation Model Tests ---
 @pytest.mark.django_db
 def test_invitation_creation():
-    """Test that an invitation is created with correct attributes."""
+    """Test invitation creation with default expires_at."""
     admin = User.objects.create_user(
         username='admin',
         email='admin@example.com',
@@ -69,15 +70,16 @@ def test_invitation_creation():
         role='admin',
         pin='123456',
         inviter=admin,
-        invitee_email='invitee@example.com',
-        expires_at=timezone.now() + timedelta(minutes=1)
+        invitee_email='invitee@example.com'
     )
     assert invitation.status == 'pending'
+    assert invitation.expires_at > timezone.now()
     assert not invitation.is_expired()
+    assert str(invitation) == f"Invitation for admin to invitee@example.com by {admin}"
 
 @pytest.mark.django_db
 def test_invitation_expiration():
-    """Test the is_expired method."""
+    """Test is_expired method with an expired invitation."""
     admin = User.objects.create_user(
         username='admin',
         email='admin@example.com',
@@ -89,13 +91,13 @@ def test_invitation_expiration():
         pin='654321',
         inviter=admin,
         invitee_email='invitee@example.com',
-        expires_at=timezone.now() - timedelta(minutes=1)  # Already expired
+        expires_at=timezone.now() - timedelta(minutes=1)
     )
     assert invitation.is_expired()
 
 @pytest.mark.django_db
 def test_save_validation_admin_role():
-    """Test that admins can only invite other admins."""
+    """Test validation: admins can only invite admins."""
     admin = User.objects.create_user(
         username='admin',
         email='admin@example.com',
@@ -112,7 +114,7 @@ def test_save_validation_admin_role():
 
 @pytest.mark.django_db
 def test_save_validation_non_admin():
-    """Test that only admins and superadmins can send invitations."""
+    """Test validation: only admins/superadmins can send invitations."""
     non_admin = User.objects.create_user(
         username='teacher',
         email='teacher@example.com',
@@ -127,7 +129,7 @@ def test_save_validation_non_admin():
             invitee_email='newteacher@example.com'
         )
 
-# Basic Model Tests (Annee, Filiere, Niveau, Semestre)
+# --- Simple Model Tests (Annee, Filiere, Niveau, Semestre) ---
 @pytest.mark.django_db
 def test_annee_creation():
     """Test Annee model creation."""
@@ -156,10 +158,10 @@ def test_semestre_creation():
     assert Semestre.objects.count() == 1
     assert semestre.nom_semestre == 'S1'
 
-# Admin Profile Tests
+# --- Profile Model Tests (Admin, Enseignant, Etudiant) ---
 @pytest.mark.django_db
 def test_admin_creation():
-    """Test that an admin profile is created with a one-to-one relationship."""
+    """Test Admin profile creation with auto_now_add."""
     user = User.objects.create_user(
         username='admin',
         email='admin@example.com',
@@ -171,29 +173,8 @@ def test_admin_creation():
     assert admin.date_creation is not None
 
 @pytest.mark.django_db
-def test_admin_many_to_many_relationships():
-    """Test many-to-many relationships with Annee, Filiere, and Semestre."""
-    user = User.objects.create_user(
-        username='admin',
-        email='admin@example.com',
-        password='pass',
-        role='admin'
-    )
-    admin = Admin.objects.create(user=user)
-    annee = Annee.objects.create(annee='2023-2024')
-    filiere = Filiere.objects.create(nom_filiere='Informatique')
-    semestre = Semestre.objects.create(nom_semestre='S1')
-    AdminAnnee.objects.create(admin=admin, annee=annee)
-    AdminFiliere.objects.create(admin=admin, filiere=filiere)
-    AdminSemestre.objects.create(admin=admin, semestre=semestre)
-    assert annee in admin.annees.all()
-    assert filiere in admin.filieres.all()
-    assert semestre in admin.semestres.all()
-
-# Enseignant Profile Tests
-@pytest.mark.django_db
 def test_enseignant_creation():
-    """Test that an enseignant profile is created."""
+    """Test Enseignant profile creation."""
     user = User.objects.create_user(
         username='teacher',
         email='teacher@example.com',
@@ -202,52 +183,11 @@ def test_enseignant_creation():
     )
     enseignant = Enseignant.objects.create(user=user)
     assert enseignant.user == user
+    assert enseignant.date_creation is not None
 
-@pytest.mark.django_db
-def test_enseignant_many_to_many_relationships():
-    """Test many-to-many relationships with Annee, Filiere, Matiere, etc."""
-    user = User.objects.create_user(
-        username='teacher',
-        email='teacher@example.com',
-        password='pass',
-        role='enseignant'
-    )
-    enseignant = Enseignant.objects.create(user=user)
-    annee = Annee.objects.create(annee='2023-2024')
-    filiere = Filiere.objects.create(nom_filiere='Informatique')
-    niveau = Niveau.objects.create(nom_niveau='L1')
-    semestre = Semestre.objects.create(nom_semestre='S1')
-    matiere = Matiere.objects.create(
-        nom_matiere='Math',
-        course_code='MATH101',
-        filiere=filiere,
-        semestre=semestre,
-        niveau=niveau
-    )
-    matiere_commune = MatiereCommune.objects.create(
-        nom_matiere_commune='Physics',
-        course_code='PHY101',
-        filiere=filiere,
-        semestre=semestre,
-        niveau=niveau
-    )
-    EnseignantAnnee.objects.create(enseignant=enseignant, annee=annee)
-    EnseignantFiliere.objects.create(enseignant=enseignant, filiere=filiere)
-    EnseignantMatiere.objects.create(enseignant=enseignant, matiere=matiere)
-    EnseignantMatiereCommune.objects.create(enseignant=enseignant, matiere_commune=matiere_commune)
-    EnseignantNiveau.objects.create(enseignant=enseignant, niveau=niveau)
-    EnseignantSemestre.objects.create(enseignant=enseignant, semestre=semestre)
-    assert annee in enseignant.annees.all()
-    assert filiere in enseignant.filieres.all()
-    assert matiere in enseignant.matieres.all()
-    assert matiere_commune in enseignant.matieres_communes.all()
-    assert niveau in enseignant.niveaux.all()
-    assert semestre in enseignant.semestres.all()
-
-# Etudiant Profile Tests
 @pytest.mark.django_db
 def test_etudiant_creation():
-    """Test that an etudiant profile is created with foreign keys."""
+    """Test Etudiant profile creation with relationships."""
     user = User.objects.create_user(
         username='student',
         email='student@example.com',
@@ -260,48 +200,12 @@ def test_etudiant_creation():
     assert etudiant.user == user
     assert etudiant.filiere == filiere
     assert etudiant.niveau == niveau
+    assert etudiant.date_creation is not None
 
-@pytest.mark.django_db
-def test_etudiant_many_to_many_relationships():
-    """Test many-to-many relationships with Annee, Semestre, Matiere, etc."""
-    user = User.objects.create_user(
-        username='student',
-        email='student@example.com',
-        password='pass',
-        role='etudiant'
-    )
-    filiere = Filiere.objects.create(nom_filiere='Informatique')
-    niveau = Niveau.objects.create(nom_niveau='L1')
-    etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
-    annee = Annee.objects.create(annee='2023-2024')
-    semestre = Semestre.objects.create(nom_semestre='S1')
-    matiere = Matiere.objects.create(
-        nom_matiere='Math',
-        course_code='MATH101',
-        filiere=filiere,
-        semestre=semestre,
-        niveau=niveau
-    )
-    matiere_commune = MatiereCommune.objects.create(
-        nom_matiere_commune='Physics',
-        course_code='PHY101',
-        filiere=filiere,
-        semestre=semestre,
-        niveau=niveau
-    )
-    EtudiantAnnee.objects.create(etudiant=etudiant, annee=annee)
-    EtudiantSemestre.objects.create(etudiant=etudiant, semestre=semestre)
-    MatiereEtudiant.objects.create(etudiant=etudiant, matiere=matiere)
-    MatiereCommuneEtudiant.objects.create(etudiant=etudiant, matiere_commune=matiere_commune)
-    assert annee in etudiant.annees.all()
-    assert semestre in etudiant.semestres.all()
-    assert matiere in etudiant.matieres.all()
-    assert matiere_commune in etudiant.matieres_communes.all()
-
-# Matiere and MatiereCommune Tests
+# --- Matiere and MatiereCommune Tests ---
 @pytest.mark.django_db
 def test_matiere_creation():
-    """Test that a matiere is created with unique course_code."""
+    """Test Matiere creation."""
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     semestre = Semestre.objects.create(nom_semestre='S1')
     niveau = Niveau.objects.create(nom_niveau='L1')
@@ -313,10 +217,11 @@ def test_matiere_creation():
         niveau=niveau
     )
     assert matiere.nom_matiere == 'Math'
+    assert matiere.course_code == 'MATH101'
 
 @pytest.mark.django_db
-def test_unique_course_code():
-    """Test that course_code is unique in Matiere."""
+def test_unique_course_code_matiere():
+    """Test unique course_code constraint for Matiere."""
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     semestre = Semestre.objects.create(nom_semestre='S1')
     niveau = Niveau.objects.create(nom_niveau='L1')
@@ -338,7 +243,7 @@ def test_unique_course_code():
 
 @pytest.mark.django_db
 def test_matiere_commune_creation():
-    """Test that a matiere_commune is created with unique course_code."""
+    """Test MatiereCommune creation."""
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     semestre = Semestre.objects.create(nom_semestre='S1')
     niveau = Niveau.objects.create(nom_niveau='L1')
@@ -350,10 +255,11 @@ def test_matiere_commune_creation():
         niveau=niveau
     )
     assert matiere_commune.nom_matiere_commune == 'Physics'
+    assert matiere_commune.course_code == 'PHY101'
 
 @pytest.mark.django_db
 def test_unique_course_code_matiere_commune():
-    """Test that course_code is unique in MatiereCommune."""
+    """Test unique course_code constraint for MatiereCommune."""
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     semestre = Semestre.objects.create(nom_semestre='S1')
     niveau = Niveau.objects.create(nom_niveau='L1')
@@ -373,17 +279,17 @@ def test_unique_course_code_matiere_commune():
             niveau=niveau
         )
 
-# Note Model Tests
+# --- Note Model Tests ---
 @pytest.mark.django_db
-def test_unique_together_constraint():
-    """Test that the unique_together constraint is enforced in Note."""
+def test_unique_together_note():
+    """Test unique_together constraint for Note."""
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     niveau = Niveau.objects.create(nom_niveau='L1')
     semestre = Semestre.objects.create(nom_semestre='S1')
     user = User.objects.create_user(
         username='student',
         email='student@example.com',
-        password='testpass',
+        password='pass',
         role='etudiant'
     )
     etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
@@ -422,18 +328,143 @@ def test_unique_together_constraint():
             annee=annee
         )
 
-# Through Model Tests (Example for AdminAnnee)
+# --- Through Model Tests ---
 @pytest.mark.django_db
-def test_admin_annee_unique_together():
-    """Test that AdminAnnee enforces unique_together."""
+def test_enseignant_annee_unique_together():
+    """Test unique_together constraint for EnseignantAnnee."""
     user = User.objects.create_user(
-        username='admin',
-        email='admin@example.com',
+        username='teacher',
+        email='teacher@example.com',
         password='pass',
-        role='admin'
+        role='enseignant'
     )
-    admin = Admin.objects.create(user=user)
+    enseignant = Enseignant.objects.create(user=user)
     annee = Annee.objects.create(annee='2023-2024')
-    AdminAnnee.objects.create(admin=admin, annee=annee)
+    EnseignantAnnee.objects.create(enseignant=enseignant, annee=annee)
     with pytest.raises(IntegrityError):
-        AdminAnnee.objects.create(admin=admin, annee=annee)
+        EnseignantAnnee.objects.create(enseignant=enseignant, annee=annee)
+
+@pytest.mark.django_db
+def test_etudiant_annee_unique_together():
+    """Test unique_together constraint for EtudiantAnnee."""
+    user = User.objects.create_user(
+        username='student',
+        email='student@example.com',
+        password='pass',
+        role='etudiant'
+    )
+    filiere = Filiere.objects.create(nom_filiere='Informatique')
+    niveau = Niveau.objects.create(nom_niveau='L1')
+    etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
+    annee = Annee.objects.create(annee='2023-2024')
+    EtudiantAnnee.objects.create(etudiant=etudiant, annee=annee)
+    with pytest.raises(IntegrityError):
+        EtudiantAnnee.objects.create(etudiant=etudiant, annee=annee)
+
+@pytest.mark.django_db
+def test_matiere_etudiant_unique_together():
+    """Test unique_together constraint for MatiereEtudiant."""
+    user = User.objects.create_user(
+        username='student',
+        email='student@example.com',
+        password='pass',
+        role='etudiant'
+    )
+    filiere = Filiere.objects.create(nom_filiere='Informatique')
+    niveau = Niveau.objects.create(nom_niveau='L1')
+    semestre = Semestre.objects.create(nom_semestre='S1')
+    etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
+    matiere = Matiere.objects.create(
+        nom_matiere='Math',
+        course_code='MATH101',
+        filiere=filiere,
+        semestre=semestre,
+        niveau=niveau
+    )
+    annee = Annee.objects.create(annee='2023-2024')
+    MatiereEtudiant.objects.create(etudiant=etudiant, matiere=matiere, annee=annee)
+    with pytest.raises(IntegrityError):
+        MatiereEtudiant.objects.create(etudiant=etudiant, matiere=matiere, annee=annee)
+
+@pytest.mark.django_db
+def test_matiere_commune_etudiant_unique_together():
+    """Test unique_together constraint for MatiereCommuneEtudiant."""
+    user = User.objects.create_user(
+        username='student',
+        email='student@example.com',
+        password='pass',
+        role='etudiant'
+    )
+    filiere = Filiere.objects.create(nom_filiere='Informatique')
+    niveau = Niveau.objects.create(nom_niveau='L1')
+    semestre = Semestre.objects.create(nom_semestre='S1')
+    etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
+    matiere_commune = MatiereCommune.objects.create(
+        nom_matiere_commune='Physics',
+        course_code='PHY101',
+        filiere=filiere,
+        semestre=semestre,
+        niveau=niveau
+    )
+    annee = Annee.objects.create(annee='2023-2024')
+    MatiereCommuneEtudiant.objects.create(etudiant=etudiant, matiere_commune=matiere_commune, annee=annee)
+    with pytest.raises(IntegrityError):
+        MatiereCommuneEtudiant.objects.create(etudiant=etudiant, matiere_commune=matiere_commune, annee=annee)
+
+# --- New Model Tests (ProfileEnseignant, ProfileEtudiant) ---
+@pytest.mark.django_db
+def test_profile_enseignant_creation():
+    """Test ProfileEnseignant creation with defaults."""
+    user = User.objects.create_user(
+        username='teacher',
+        email='teacher@example.com',
+        password='pass',
+        role='enseignant'
+    )
+    enseignant = Enseignant.objects.create(user=user)
+    annee = Annee.objects.create(annee='2023-2024')
+    profile = ProfileEnseignant.objects.create(enseignant=enseignant, annee=annee)
+    assert profile.enseignant == enseignant
+    assert profile.annee == annee
+    assert profile.validated is False
+    assert profile.new_entry is True
+    assert profile.date_creation is not None
+    assert profile.matiere is None
+    assert profile.matiere_commune is None
+
+@pytest.mark.django_db
+def test_profile_etudiant_creation():
+    """Test ProfileEtudiant creation with relationships."""
+    user = User.objects.create_user(
+        username='student',
+        email='student@example.com',
+        password='pass',
+        role='etudiant'
+    )
+    filiere = Filiere.objects.create(nom_filiere='Informatique')
+    niveau = Niveau.objects.create(nom_niveau='L1')
+    semestre = Semestre.objects.create(nom_semestre='S1')
+    etudiant = Etudiant.objects.create(user=user, filiere=filiere, niveau=niveau)
+    matiere = Matiere.objects.create(
+        nom_matiere='Math',
+        course_code='MATH101',
+        filiere=filiere,
+        semestre=semestre,
+        niveau=niveau
+    )
+    annee = Annee.objects.create(annee='2023-2024')
+    profile = ProfileEtudiant.objects.create(
+        etudiant=etudiant,
+        filiere=filiere,
+        matiere=matiere,
+        semestre=semestre,
+        annee=annee,
+        niveau=niveau
+    )
+    assert profile.etudiant == etudiant
+    assert profile.filiere == filiere
+    assert profile.matiere == matiere
+    assert profile.semestre == semestre
+    assert profile.annee == annee
+    assert profile.niveau == niveau
+    assert profile.matiere_commune is None

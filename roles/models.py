@@ -67,7 +67,7 @@ class Invitation(models.Model):
 
 # Annee (Years)
 class Annee(models.Model):
-    annee = models.CharField(max_length=9)
+    annee = models.CharField(max_length=9, null=True)
 
     class Meta:
         db_table = 'annees'
@@ -97,10 +97,7 @@ class Semestre(models.Model):
 class Admin(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='admin_profile')
     date_creation = models.DateTimeField(auto_now_add=True)
-    annees = models.ManyToManyField(Annee, through='AdminAnnee')
-    filieres = models.ManyToManyField(Filiere, through='AdminFiliere')
-    semestres = models.ManyToManyField(Semestre, through='AdminSemestre')
-
+ 
     class Meta:
         db_table = 'admins'
 
@@ -108,13 +105,7 @@ class Admin(models.Model):
 class Enseignant(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='enseignant_profile')
     date_creation = models.DateTimeField(auto_now_add=True)
-    annees = models.ManyToManyField(Annee, through='EnseignantAnnee')
-    filieres = models.ManyToManyField(Filiere, through='EnseignantFiliere')
-    matieres = models.ManyToManyField('Matiere', through='EnseignantMatiere')
-    matieres_communes = models.ManyToManyField('MatiereCommune', through='EnseignantMatiereCommune')
-    niveaux = models.ManyToManyField(Niveau, through='EnseignantNiveau')
-    semestres = models.ManyToManyField(Semestre, through='EnseignantSemestre')
-
+    
     class Meta:
         db_table = 'enseignants'
 
@@ -124,11 +115,7 @@ class Etudiant(models.Model):
     date_creation = models.DateTimeField(auto_now_add=True)
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, null=True, db_column='id_filiere')
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, null=True, db_column='id_niveau')
-    annees = models.ManyToManyField(Annee, through='EtudiantAnnee')
-    semestres = models.ManyToManyField(Semestre, through='EtudiantSemestre')
-    matieres = models.ManyToManyField('Matiere', through='MatiereEtudiant', related_name='etudiants')
-    matieres_communes = models.ManyToManyField('MatiereCommune', through='MatiereCommuneEtudiant')
-
+   
     class Meta:
         db_table = 'etudiants'
 
@@ -169,110 +156,64 @@ class Note(models.Model):
         unique_together = ('etudiant', 'matiere', 'matiere_commune', 'annee')
 
 # Through Models for Many-to-Many Relationships
-
-# Admin Through Models
-class AdminAnnee(models.Model):
-    admin = models.ForeignKey(Admin, on_delete=models.CASCADE, db_column='id_admin')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee')
-
-    class Meta:
-        db_table = 'admins_annees'
-        unique_together = ('admin', 'annee')
-
-class AdminFiliere(models.Model):
-    admin = models.ForeignKey(Admin, on_delete=models.CASCADE, db_column='id_admin')
-    filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
-
-    class Meta:
-        db_table = 'admins_filieres'
-        unique_together = ('admin', 'filiere')
-
-class AdminSemestre(models.Model):
-    admin = models.ForeignKey(Admin, on_delete=models.CASCADE, db_column='id_admin')
-    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
-
-    class Meta:
-        db_table = 'admins_semestres'
-        unique_together = ('admin', 'semestre')
-
 # Enseignant Through Models
 class EnseignantAnnee(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
 
     class Meta:
         db_table = 'enseignants_annees'
         unique_together = ('enseignant', 'annee')
 
-class EnseignantFiliere(models.Model):
-    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
-
-    class Meta:
-        db_table = 'enseignants_filieres'
-        unique_together = ('enseignant', 'filiere')
-
-class EnseignantMatiere(models.Model):
-    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
-
-    class Meta:
-        db_table = 'enseignants_matieres'
-        unique_together = ('enseignant', 'matiere')
-
-class EnseignantMatiereCommune(models.Model):
-    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, db_column='id_matiere_commune')
-
-    class Meta:
-        db_table = 'enseignants_matieres_communes'
-        unique_together = ('enseignant', 'matiere_commune')
-
-class EnseignantNiveau(models.Model):
-    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
-
-    class Meta:
-        db_table = 'enseignants_niveaux'
-        unique_together = ('enseignant', 'niveau')
-
-class EnseignantSemestre(models.Model):
-    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
-
-    class Meta:
-        db_table = 'enseignants_semestres'
-        unique_together = ('enseignant', 'semestre')
-
 # Etudiant Through Models
 class EtudiantAnnee(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
 
     class Meta:
         db_table = 'etudiants_annees'
         unique_together = ('etudiant', 'annee')
 
-class EtudiantSemestre(models.Model):
-    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
-    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
-
-    class Meta:
-        db_table = 'etudiants_semestres'
-        unique_together = ('etudiant', 'semestre')
-
 class MatiereEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
 
     class Meta:
         db_table = 'matieres_etudiants'
-        unique_together = ('etudiant', 'matiere')
+        unique_together = ('etudiant', 'matiere', 'annee')
 
 class MatiereCommuneEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, db_column='id_matiere_commune')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
 
     class Meta:
         db_table = 'matieres_communes_etudiants'
-        unique_together = ('etudiant', 'matiere_commune')
+        unique_together = ('etudiant', 'matiere_commune', 'annee')
+
+# New Models Added
+class ProfileEnseignant(models.Model):
+    enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, db_column='id_matiere')
+    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, db_column='id_matiere_commune')
+    validated = models.BooleanField(default=False)
+    date_creation = models.DateTimeField(auto_now_add=True)
+    new_entry = models.BooleanField(default=True)
+
+    class Meta:
+        db_table = 'profile_enseignant'
+
+class ProfileEtudiant(models.Model):
+    etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
+    filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
+    semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
+    niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
+    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, db_column='id_matiere_commune')
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
+
+    class Meta:
+        db_table = 'profile_etudiant'
