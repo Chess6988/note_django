@@ -28,7 +28,7 @@ class User(AbstractUser):
         elif self.role == 'superadmin':
             return '/superadmin/panel/'
         else:
-            return '/'
+            return '/role-not-found/'  # Updated fallback URL
 
 class Invitation(models.Model):
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
@@ -54,7 +54,7 @@ class Invitation(models.Model):
         return timezone.now() > self.expires_at
     
     def save(self, *args, **kwargs):
-        """Automatically set expires_at to 7 days from creation if not provided."""
+        """Automatically set expires_at to 1 minute from creation if not provided."""
         if not self.expires_at:
-            self.expires_at = timezone.now() + timedelta(days=7)
+            self.expires_at = timezone.now() + timedelta(minutes=1)
         super().save(*args, **kwargs)
