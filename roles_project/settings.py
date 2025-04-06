@@ -95,6 +95,8 @@ WSGI_APPLICATION = 'roles_project.wsgi.application'
 # Database
 # https://docs.djangoproject.com/en/5.0/ref/settings/#databases
 
+# New settings.py from migration from sqlite to postsql
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -105,6 +107,7 @@ DATABASES = {
         'PORT': '5432',
     }
 }
+
 
 
 # Password validation

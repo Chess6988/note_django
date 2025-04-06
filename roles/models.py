@@ -13,7 +13,7 @@ class User(AbstractUser):
     ]
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    phone_number = models.CharField(max_length=15)
+    phone_number = models.CharField(max_length=15, default='0000000000')
     email = models.EmailField(unique=True)
     
     def __str__(self):
