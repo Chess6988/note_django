@@ -31,6 +31,7 @@ ALLOWED_HOSTS = []
 
 # Application definition
 
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -155,3 +156,7 @@ AUTH_USER_MODEL = 'roles.User'
 user = settings.AUTH_USER_MODEL
 LOGIN_URL = '/roles/login/'
 AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
+
+
+
+#pytest roles/test_forms.py
