@@ -1,4 +1,5 @@
 from django import forms
+from django.contrib.auth.forms import UserCreationForm
 from .models import (
     User, Invitation, Annee, Filiere, Niveau, Semestre, Admin, Enseignant, Etudiant,
     Matiere, MatiereCommune, Note, EnseignantAnnee, EtudiantAnnee, MatiereEtudiant,
@@ -127,3 +128,40 @@ class MatiereCommuneEtudiantForm(forms.ModelForm):
     class Meta:
         model = MatiereCommuneEtudiant
         fields = '__all__'
+
+# New forms for user interactions
+
+
+class DefaultSignUpForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+
+class InvitedSignUpForm(UserCreationForm):
+    class Meta:
+        model = User
+        fields = ['username', 'first_name', 'last_name', 'phone_number']
+
+class InviteUserForm(forms.Form):
+    email = forms.EmailField(label="Email Address")
+    role = forms.ChoiceField(label="Role")
+
+    def __init__(self, *args, **kwargs):
+        user = kwargs.pop('user', None)
+        super().__init__(*args, **kwargs)
+        if user:
+            if hasattr(User, 'ROLE_CHOICES'):
+                if user.role == 'superadmin':
+                    self.fields['role'].choices = User.ROLE_CHOICES
+                elif user.role == 'admin':
+                    self.fields['role'].choices = [
+                        ('admin', 'Admin'),
+                        ('enseignant', 'Enseignant')
+                    ]
+            else:
+                self.fields['role'].choices = [
+                    ('etudiant', 'Etudiant'),
+                    ('enseignant', 'Enseignant'),
+                    ('admin', 'Admin'),
+                    ('superadmin', 'Superadmin')
+                ]

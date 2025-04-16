@@ -35,7 +35,7 @@ class User(AbstractUser):
 # Invitation Model
 class Invitation(models.Model):
     role = models.CharField(max_length=20, choices=User.ROLE_CHOICES)
-    pin = models.CharField(max_length=10, unique=True)
+    pin = models.CharField(max_length=36, unique=True)  #Increased from 10 to 36
     inviter = models.ForeignKey(User, on_delete=models.CASCADE, related_name='sent_invitations')
     invitee_email = models.EmailField()
     status = models.CharField(max_length=20, default='pending')
@@ -156,7 +156,6 @@ class Note(models.Model):
         unique_together = ('etudiant', 'matiere', 'matiere_commune', 'annee')
 
 # Through Models for Many-to-Many Relationships
-# Enseignant Through Models
 class EnseignantAnnee(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
     annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
@@ -165,7 +164,6 @@ class EnseignantAnnee(models.Model):
         db_table = 'enseignants_annees'
         unique_together = ('enseignant', 'annee')
 
-# Etudiant Through Models
 class EtudiantAnnee(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
@@ -213,7 +211,7 @@ class ProfileEtudiant(models.Model):
     annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
     matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, db_column='id_matiere_commune')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, db_column='id_annee', null=True)
 
     class Meta:
         db_table = 'profile_etudiant'
+        unique_together = ('etudiant', 'annee')  # Ensures one profile per student per year
