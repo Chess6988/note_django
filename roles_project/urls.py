@@ -21,4 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     
     path('', include('roles.urls')),  # Optional: Root path access
+    
 ]

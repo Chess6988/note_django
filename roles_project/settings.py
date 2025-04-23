@@ -67,6 +67,33 @@ EMAIL_HOST_PASSWORD = 'oxvk gupz tncs nxrc'  # Your app-specific password (see n
 DEFAULT_FROM_EMAIL = 'noreply.kuetevaldes@gmail.com'  # Default from email address
 
 
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'WARNING',
+    },
+    'loggers': {
+        'django': {
+            'handlers': ['console'],
+            'level': 'ERROR',
+            'propagate': False,
+        },
+        'roles': {
+            'handlers': ['console'],
+            'level': 'DEBUG' if DEBUG else 'ERROR',
+            'propagate': False,
+        },
+    },
+}
+
+
 CSRF_COOKIE_SAMESITE = 'None'
 CSRF_COOKIE_SECURE = True  # Ensure you're using HTTPS in production
 
@@ -154,7 +181,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'roles.User'
 
 user = settings.AUTH_USER_MODEL
-LOGIN_URL = '/roles/login/'
+LOGIN_URL = 'roles:login'
+LOGOUT_REDIRECT_URL = 'roles:login'  # Optional
 AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
 
 

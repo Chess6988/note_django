@@ -1,0 +1,10 @@
+{% extends 'base.html' %}
+{% block title %}Admin Panel{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <h2 class="mb-4">Welcome to the Admin Panel, {{ user.first_name }}!</h2>
+        <p>Here you can manage users and invitations.</p>
+    </div>
+</div>
+{% endblock %}

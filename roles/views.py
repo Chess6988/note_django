@@ -1,147 +1,252 @@
+from django.shortcuts import render, redirect, get_object_or_404
+from django.contrib.auth import login, authenticate
 from django.contrib import messages
-from django.contrib.auth import login
-from django.shortcuts import render, redirect
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
-from django.template.loader import render_to_string
-from django.contrib.sites.shortcuts import get_current_site
-from django.core.mail import send_mail
 from django.contrib.auth.tokens import default_token_generator
+from django.core.mail import send_mail
+from django.db import IntegrityError, DatabaseError
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth.views import LoginView
 from django.urls import reverse
-import uuid
-from .models import User, Invitation, Etudiant, Admin, Enseignant
-from .forms import DefaultSignUpForm, InvitedSignUpForm, InviteUserForm
-from django.conf import settings
-from django.utils import timezone
-from datetime import timedelta
+import logging
+import random
+from .models import User, Invitation, Etudiant, Enseignant, Admin
+from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm
 
-def signup_view(request):
+logger = logging.getLogger(__name__)
+
+def send_activation_email(user, request):
+    """Send an activation email with a 24-hour token."""
+    token = default_token_generator.make_token(user)
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    activation_link = request.build_absolute_uri(
+        reverse('activate', kwargs={'uidb64': uid, 'token': token})
+    )
+    subject = "Activate Your Account"
+    message = render_to_string('activation_email.html', {
+        'user': user,
+        'activation_link': activation_link,
+    })
+    try:
+        send_mail(subject, message, 'from@example.com', [user.email], html_message=message)
+    except Exception as e:
+        logger.error(f"Failed to send activation email to {user.email}: {e}")
+        raise
+
+def etudiant_signup(request):
+    """Handle Etudiant self-registration."""
+    if request.user.is_authenticated:
+        return redirect(request.user.get_redirect_url())  # Redirect authenticated users
     if request.method == 'POST':
         form = DefaultSignUpForm(request.POST)
         if form.is_valid():
-            user = form.save(commit=False)
-            user.role = 'etudiant'
-            user.is_active = False
-            user.save()  # Password is set by UserCreationForm
-            Etudiant.objects.create(user=user, filiere=None, niveau=None)
-
-            current_site = get_current_site(request)
-            subject = 'Activate your account'
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            activation_link = reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
-            activation_url = f"http://{current_site.domain}{activation_link}"
-
-            message = render_to_string('roles/activation_email.html', {
-                'user': user,
-                'activation_url': activation_url
-            })
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
-
-            return render(request, 'roles/signup.html', {'form': form, 'show_modal': True})
+            try:
+                user = form.save(commit=False)
+                user.role = 'etudiant'
+                user.is_active = False
+                user.save()
+                Etudiant.objects.create(user=user)
+                send_activation_email(user, request)
+                messages.success(request, 'Account created! Check your email to activate.')
+                return redirect('signin')
+            except IntegrityError:
+                messages.error(request, 'Username or email already exists.')
+            except DatabaseError as e:
+                logger.error(f"Database error during signup: {e}")
+                messages.error(request, 'An error occurred. Please try again later.')
+            except Exception as e:
+                logger.error(f"Unexpected error during signup: {e}")
+                messages.error(request, 'An unexpected error occurred.')
+        else:
+            messages.error(request, 'Please correct the errors below.')
     else:
         form = DefaultSignUpForm()
-    return render(request, 'roles/signup.html', {'form': form})
+    return render(request, 'signup.html', {'form': form})
 
-def invited_signup_view(request, token):
-    try:
-        invitation = Invitation.objects.get(pin=token, status='pending')
-    except Invitation.DoesNotExist:
-        messages.error(request, 'Invalid or expired invitation link.')
-        return redirect('roles:signup')
 
-    if request.method == 'POST':
-        form = InvitedSignUpForm(request.POST)
-        if form.is_valid():
-            user = form.save(commit=False)
-            user.email = invitation.invitee_email
-            user.role = invitation.role
-            user.is_active = False
-            user.save()  # Password is set by UserCreationForm
 
-            if user.role == 'enseignant':
-                Enseignant.objects.create(user=user)
-            elif user.role == 'admin':
-                Admin.objects.create(user=user)
-
-            invitation.status = 'accepted'
-            invitation.save()
-
-            current_site = get_current_site(request)
-            subject = 'Activate your account'
-            uid = urlsafe_base64_encode(force_bytes(user.pk))
-            token = default_token_generator.make_token(user)
-            activation_link = reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
-            activation_url = f"http://{current_site.domain}{activation_link}"
-
-            message = render_to_string('roles/activation_email.html', {
-                'user': user,
-                'activation_url': activation_url
-            })
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
-
-            return redirect('roles:login')
-    else:
-        form = InvitedSignUpForm()
-    return render(request, 'roles/signup.html', {'form': form, 'invitation': invitation})
-
-@login_required
-def invite_user_view(request):
-    if request.user.role not in ['superadmin', 'admin']:
-        messages.error(request, 'You do not have permission to invite users.')
-        return redirect(f"{reverse('roles:login')}?next={request.path}")
-
-    if request.method == 'POST':
-        form = InviteUserForm(request.POST, user=request.user)
-        if form.is_valid():
-            email = form.cleaned_data['email']
-            role = form.cleaned_data['role']
-            pin = str(uuid.uuid4())
-            invitation = Invitation.objects.create(
-                invitee_email=email,
-                role=role,
-                pin=pin,
-                inviter=request.user,
-                expires_at=timezone.now() + timedelta(days=7),
-                status='pending'
-            )
-
-            current_site = get_current_site(request)
-            subject = 'You are invited to join'
-            invitation_link = reverse('roles:invited_signup', kwargs={'token': pin})
-            invitation_url = f"http://{current_site.domain}{invitation_link}"
-
-            message = render_to_string('roles/invitation_email.html', {
-                'role': role,
-                'invitation_url': invitation_url
-            })
-            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [email])
-
-            messages.success(request, 'Invitation sent successfully.')
-            return redirect('roles:invite')
-    else:
-        form = InviteUserForm(user=request.user)
-    return render(request, 'roles/invite_user.html', {'form': form})
 
 def activate_account(request, uidb64, token):
+    """Activate user account via email token."""
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
         user = User.objects.get(pk=uid)
     except (TypeError, ValueError, OverflowError, User.DoesNotExist):
         user = None
-
-    if user is not None and default_token_generator.check_token(user, token):
+    if user and default_token_generator.check_token(user, token):
         user.is_active = True
         user.save()
-        messages.success(request, 'Account activated successfully. You can now log in.')
-        return redirect('roles:login')
+        messages.success(request, 'Account activated! Please sign in.')
+        return redirect('signin')
     else:
         messages.error(request, 'Invalid or expired activation link.')
-        return redirect('roles:signup')
+        return redirect('resend_activation')
 
-class CustomLoginView(LoginView):
-    template_name = 'roles/login.html'
-    def get_success_url(self):
-        return self.request.user.get_redirect_url()
+def resend_activation(request):
+    """Resend activation email."""
+    if request.method == 'POST':
+        form = ResendActivationForm(request.POST)
+        if form.is_valid():
+            email = form.cleaned_data['email']
+            try:
+                user = User.objects.get(email=email, is_active=False)
+                send_activation_email(user, request)
+                messages.success(request, 'Activation email resent. Check your email.')
+            except User.DoesNotExist:
+                messages.error(request, 'No inactive account found with this email.')
+            except Exception as e:
+                logger.error(f"Error resending activation: {e}")
+                messages.error(request, 'An error occurred. Please try again.')
+            return redirect('signin')
+    else:
+        form = ResendActivationForm()
+    return render(request, 'resend_activation.html', {'form': form})
+
+def signin(request):
+    """Handle user login."""
+    if request.method == 'POST':
+        username = request.POST.get('username')
+        password = request.POST.get('password')
+        user = authenticate(request, username=username, password=password)
+        if user:
+            login(request, user)
+            return redirect(user.get_redirect_url())
+        else:
+            messages.error(request, 'Invalid username or password.')
+    return render(request, 'signin.html')
+
+def verify_invitation(request, token):
+    """Verify invitation PIN."""
+    invitation = get_object_or_404(Invitation, token=token, status='pending')
+    if invitation.is_expired():
+        messages.error(request, 'Invitation has expired.')
+        return redirect('signin')
+    if invitation.attempt_count >= 3:
+        messages.error(request, 'Invitation is invalidated due to too many attempts.')
+        return redirect('signin')
+    if request.method == 'POST':
+        form = PinForm(request.POST)
+        if form.is_valid():
+            pin = form.cleaned_data['pin']
+            if invitation.check_pin(pin):
+                return redirect('invited_signup', token=token)
+            else:
+                invitation.attempt_count += 1
+                if invitation.attempt_count >= 3:
+                    invitation.status = 'invalidated'
+                invitation.save()
+                messages.error(request, f'Incorrect PIN. {3 - invitation.attempt_count} attempts left.')
+        else:
+            messages.error(request, 'Please enter a valid PIN.')
+    else:
+        form = PinForm()
+    return render(request, 'verify_invitation.html', {'form': form, 'token': token})
+
+def invited_signup(request, token):
+    """Handle signup for invited roles."""
+    invitation = get_object_or_404(Invitation, token=token, status='pending')
+    if invitation.is_expired() or invitation.attempt_count >= 3:
+        messages.error(request, 'Invitation is no longer valid.')
+        return redirect('signin')
+    if request.method == 'POST':
+        form = DefaultSignUpForm(request.POST)
+        if form.is_valid():
+            try:
+                user = form.save(commit=False)
+                user.role = invitation.role
+                user.email = invitation.email
+                user.is_active = False
+                user.save()
+                if user.role == 'admin':
+                    Admin.objects.create(user=user)
+                elif user.role == 'enseignant':
+                    Enseignant.objects.create(user=user)
+                send_activation_email(user, request)
+                invitation.status = 'accepted'
+                invitation.accepted_by = user
+                invitation.save()
+                messages.success(request, 'Account created! Check your email to activate.')
+                return redirect('signin')
+            except IntegrityError:
+                messages.error(request, 'Username or email already exists.')
+            except DatabaseError as e:
+                logger.error(f"Database error during invited signup: {e}")
+                messages.error(request, 'An error occurred. Please try again.')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = DefaultSignUpForm(initial={'email': invitation.email})
+        form.fields['email'].widget.attrs['readonly'] = True
+    return render(request, 'invited_signup.html', {'form': form, 'role': invitation.role})
+
+@login_required
+@login_required
+def send_invitation(request):
+    """Send an invitation (Admin/Superadmin only)."""
+    if request.user.role not in ['superadmin', 'admin']:
+        messages.error(request, 'You do not have permission to send invitations.')
+        return redirect('signin')
+    if request.method == 'POST':
+        form = InvitationForm(request.POST)
+        if form.is_valid():
+            try:
+                invitation = form.save(commit=False)
+                invitation.inviter = request.user
+                raw_pin = ''.join([str(random.randint(0, 9)) for _ in range(6)])
+                invitation.set_pin(raw_pin)
+                invitation.save()
+                link = request.build_absolute_uri(reverse('verify_invitation', args=[invitation.token]))
+                messages.success(request, f'Invitation sent! Link: {link}, PIN: {raw_pin}')
+                return redirect(request.user.get_redirect_url())  # Updated redirect
+            except ValidationError as e:
+                messages.error(request, str(e))
+            except Exception as e:
+                logger.error(f"Error sending invitation: {e}")
+                messages.error(request, 'An error occurred while sending the invitation.')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+    else:
+        form = InvitationForm()
+    return render(request, 'send_invitation.html', {'form': form})
+
+@login_required
+def etudiant_dashboard(request):
+    """Etudiant dashboard."""
+    if request.user.role != 'etudiant':
+        messages.error(request, 'Access denied.')
+        return redirect('signin')
+    return render(request, 'etudiant_dashboard.html')
+
+def custom_404(request, exception):
+    """Custom 404 handler."""
+    return render(request, '404.html', status=404)
+
+def custom_500(request):
+    """Custom 500 handler."""
+    return render(request, '500.html', status=500)
+
+
+
+@login_required
+def enseignant_dashboard(request):
+    """Enseignant (Teacher) dashboard."""
+    if request.user.role != 'enseignant':
+        messages.error(request, 'Access denied.')
+        return redirect('signin')
+    return render(request, 'enseignant_dashboard.html')
+
+@login_required
+def admin_panel(request):
+    """Admin dashboard."""
+    if request.user.role != 'admin':
+        messages.error(request, 'Access denied.')
+        return redirect('signin')
+    return render(request, 'admin_panel.html')
+
+@login_required
+def superadmin_panel(request):
+    """Superadmin dashboard."""
+    if request.user.role != 'superadmin':
+        messages.error(request, 'Access denied.')
+        return redirect('signin')
+    return render(request, 'superadmin_panel.html')

@@ -39,10 +39,7 @@ class UserAdmin(BaseUserAdmin):
 ## Invitation Model
 @admin.register(Invitation)
 class InvitationAdmin(admin.ModelAdmin):
-    form = InvitationAdminForm  # Link custom form
-    list_display = ('role', 'pin', 'inviter', 'invitee_email', 'status', 'created_at', 'expires_at')
-    search_fields = ('pin', 'invitee_email', 'inviter__username')
-    list_filter = ('role', 'status')
+    list_display = ['role', 'token', 'email', 'status']  # Adjusted to use 'email'
 
 ## Admin Model
 @admin.register(Admin)

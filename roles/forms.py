@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth.forms import UserCreationForm
+from django.core.validators import RegexValidator
 from .models import (
     User, Invitation, Annee, Filiere, Niveau, Semestre, Admin, Enseignant, Etudiant,
     Matiere, MatiereCommune, Note, EnseignantAnnee, EtudiantAnnee, MatiereEtudiant,
@@ -133,35 +134,54 @@ class MatiereCommuneEtudiantForm(forms.ModelForm):
 
 
 class DefaultSignUpForm(UserCreationForm):
+    phone_number = forms.CharField(
+        max_length=15,
+        validators=[RegexValidator(r'^\d+$', "Phone number must contain only digits.")],
+        widget=forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'Phone Number'}),
+        help_text="Enter your phone number (digits only)."
+    )
+    
     class Meta:
         model = User
         fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
-
-class InvitedSignUpForm(UserCreationForm):
-    class Meta:
-        model = User
-        fields = ['username', 'first_name', 'last_name', 'phone_number']
-
-class InviteUserForm(forms.Form):
-    email = forms.EmailField(label="Email Address")
-    role = forms.ChoiceField(label="Role")
-
+        widgets = {
+            'username': forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'Username'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'aria-label': 'Email'}),
+            'first_name': forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'First Name'}),
+            'last_name': forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'Last Name'}),
+        }
+    
     def __init__(self, *args, **kwargs):
-        user = kwargs.pop('user', None)
         super().__init__(*args, **kwargs)
-        if user:
-            if hasattr(User, 'ROLE_CHOICES'):
-                if user.role == 'superadmin':
-                    self.fields['role'].choices = User.ROLE_CHOICES
-                elif user.role == 'admin':
-                    self.fields['role'].choices = [
-                        ('admin', 'Admin'),
-                        ('enseignant', 'Enseignant')
-                    ]
-            else:
-                self.fields['role'].choices = [
-                    ('etudiant', 'Etudiant'),
-                    ('enseignant', 'Enseignant'),
-                    ('admin', 'Admin'),
-                    ('superadmin', 'Superadmin')
-                ]
+        self.fields['password1'].widget.attrs.update({'class': 'form-control', 'aria-label': 'Password'})
+        self.fields['password2'].widget.attrs.update({'class': 'form-control', 'aria-label': 'Confirm Password'})
+
+class PinForm(forms.Form):
+    pin = forms.CharField(
+        max_length=6,
+        min_length=6,
+        validators=[RegexValidator(r'^\d{6}$', "PIN must be a 6-digit number.")],
+        widget=forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'PIN'}),
+        help_text="Enter the 6-digit PIN sent to you."
+    )
+
+class ResendActivationForm(forms.Form):
+    email = forms.EmailField(
+        widget=forms.EmailInput(attrs={'class': 'form-control', 'aria-label': 'Email'}),
+        help_text="Enter your email to resend the activation link."
+    )
+
+class InvitationForm(forms.ModelForm):
+    class Meta:
+        model = Invitation
+        fields = ['role', 'email']
+        widgets = {
+            'role': forms.Select(attrs={'class': 'form-control', 'aria-label': 'Role'}),
+            'email': forms.EmailInput(attrs={'class': 'form-control', 'aria-label': 'Email'}),
+        }
+    
+    def clean_role(self):
+        role = self.cleaned_data['role']
+        if role == 'etudiant':
+            raise forms.ValidationError("Cannot invite users as Etudiant.")
+        return role

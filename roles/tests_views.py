@@ -1,187 +1,354 @@
 import pytest
-from django.test import RequestFactory, Client
-from django.urls import reverse
-from django.contrib.auth.tokens import default_token_generator
-from django.utils.http import urlsafe_base64_encode
-from django.utils.encoding import force_bytes
-from roles.views import signup_view, invited_signup_view, invite_user_view, activate_account, CustomLoginView
-from roles.models import User, Invitation, Etudiant, Enseignant, Admin
-from roles.forms import DefaultSignUpForm, InvitedSignUpForm, InviteUserForm
-from unittest.mock import patch
+from django.contrib.auth import get_user_model
+from django.core.exceptions import ValidationError
+from django.db import IntegrityError
 from django.utils import timezone
 from datetime import timedelta
+import uuid
+from .models import (
+    User, Invitation, Annee, Filiere, Niveau, Semestre, Admin, Enseignant, Etudiant,
+    Matiere, MatiereCommune, Note, EnseignantAnnee, EtudiantAnnee, MatiereEtudiant,
+    MatiereCommuneEtudiant, ProfileEnseignant, ProfileEtudiant
+)
 
-@pytest.fixture
-def client():
-    return Client()
+User = get_user_model()
 
-@pytest.fixture
-def rf():
-    return RequestFactory()
-
-@pytest.fixture
-def user():
+# Helper function to create a user
+def create_user(username, email, role, password='testpass123', phone_number='1234567890'):
     return User.objects.create_user(
-        username="student",
-        email="student@example.com",
-        password="testpass123",
-        role="etudiant"
+        username=username,
+        email=email,
+        password=password,
+        role=role,
+        phone_number=phone_number
     )
 
-@pytest.fixture
-def admin_user():
-    return User.objects.create_user(
-        username="admin",
-        email="admin@example.com",
-        password="testpass123",
-        role="admin"
-    )
-
-@pytest.fixture
-def superadmin_user():
-    return User.objects.create_user(
-        username="superadmin",
-        email="superadmin@example.com",
-        password="testpass123",
-        role="superadmin"
-    )
-
+# Tests for User Model
 @pytest.mark.django_db
-def test_signup_view_get(client):
-    response = client.get(reverse('roles:signup'))
-    assert response.status_code == 200
-    assert 'form' in response.context
-    assert isinstance(response.context['form'], DefaultSignUpForm)
-    assert 'show_modal' not in response.context
+class TestUserModel:
+    def test_create_valid_user(self):
+        user = create_user('testuser', 'test@example.com', 'etudiant')
+        assert user.username == 'testuser'
+        assert user.email == 'test@example.com'
+        assert user.role == 'etudiant'
+        assert user.phone_number == '1234567890'
 
-@pytest.mark.django_db
-@patch('roles.views.send_mail')
-def test_signup_view_post_valid(mock_send_mail, client):
-    data = {
-        'username': 'newstudent',
-        'email': 'newstudent@example.com',
-        'password1': 'testpass123',
-        'password2': 'testpass123',
-        'first_name': 'John',
-        'last_name': 'Doe',
-        'phone_number': '1234567890'  # Added to satisfy form fields
-    }
-    response = client.post(reverse('roles:signup'), data)
-    assert response.status_code == 200
-    assert 'show_modal' in response.context
-    assert response.context['show_modal'] is True
-    user = User.objects.get(email='newstudent@example.com')
-    assert user.role == 'etudiant'
-    assert user.is_active is False
-    assert Etudiant.objects.filter(user=user).exists()
-    assert mock_send_mail.called
+    def test_email_must_be_unique(self):
+        create_user('user1', 'unique@example.com', 'etudiant')
+        with pytest.raises(IntegrityError):
+            create_user('user2', 'unique@example.com', 'etudiant')
 
-@pytest.mark.django_db
-def test_invited_signup_view_get_valid_token(client, superadmin_user):
-    invitation = Invitation.objects.create(
-        invitee_email='invited@example.com',
-        role='enseignant',
-        pin='test-pin',
-        inviter=superadmin_user,
-        expires_at=timezone.now() + timedelta(minutes=10),
-        status='pending'
-    )
-    response = client.get(reverse('roles:invited_signup', kwargs={'token': 'test-pin'}))
-    assert response.status_code == 200
-    assert 'form' in response.context
-    assert isinstance(response.context['form'], InvitedSignUpForm)
-    assert 'invitation' in response.context
-    assert response.context['invitation'] == invitation
+    def test_phone_number_only_digits(self):
+        user = User(username='testphone', email='phone@example.com', phone_number='abc123', role='etudiant')
+        with pytest.raises(ValidationError):
+            user.full_clean()
 
-@pytest.mark.django_db
-def test_invited_signup_view_get_invalid_token(client):
-    response = client.get(reverse('roles:invited_signup', kwargs={'token': 'invalid-pin'}))
-    assert response.status_code == 302
-    assert response.url == reverse('roles:signup')
+    def test_phone_number_max_length(self):
+        user = User(username='testmax', email='max@example.com', phone_number='1' * 16, role='etudiant')
+        with pytest.raises(ValidationError):
+            user.full_clean()
 
-@pytest.mark.django_db
-@patch('roles.views.send_mail')
-def test_invited_signup_view_post_valid(mock_send_mail, client, superadmin_user):
-    invitation = Invitation.objects.create(
-        invitee_email='invited@example.com',
-        role='enseignant',
-        pin='test-pin',
-        inviter=superadmin_user,
-        expires_at=timezone.now() + timedelta(minutes=10),
-        status='pending'
-    )
-    data = {
-        'username': 'inviteduser',
-        'password1': 'testpass123',
-        'password2': 'testpass123',
-        'first_name': 'Jane',
-        'last_name': 'Doe',
-        'phone_number': '1234567890'  # Added to satisfy form fields
-    }
-    response = client.post(reverse('roles:invited_signup', kwargs={'token': 'test-pin'}), data)
-    assert response.status_code == 302  # Redirect on success
-    assert User.objects.filter(email='invited@example.com').exists()
-    assert mock_send_mail.called
+    def test_invalid_role_raises_error(self):
+        user = User(username='invalidrole', email='invalid@example.com', role='invalid')
+        with pytest.raises(ValidationError):
+            user.full_clean()
 
-@pytest.mark.django_db
-def test_invite_user_view_get_admin(client, admin_user):
-    client.login(username='admin', password='testpass123')
-    response = client.get(reverse('roles:invite'))
-    assert response.status_code == 200
-    assert 'form' in response.context
-    assert isinstance(response.context['form'], InviteUserForm)
+    def test_get_redirect_url_by_role(self):
+        user = create_user('adminuser', 'admin@example.com', 'admin')
+        assert user.get_redirect_url() == '/admin/panel/'
+        user.role = 'etudiant'
+        assert user.get_redirect_url() == '/etudiant/dashboard/'
 
+# Tests for Invitation Model
 @pytest.mark.django_db
-def test_invite_user_view_get_non_admin(client, user):
-    client.login(username='student', password='testpass123')
-    response = client.get(reverse('roles:invite'))
-    assert response.status_code == 302
-    assert response.url == f"{reverse('roles:login')}?next=/invite/"
+class TestInvitationModel:
+    def test_create_valid_invitation(self):
+        inviter = create_user('inviter', 'inviter@example.com', 'admin')
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='invited@example.com',
+            inviter=inviter,
+            expires_at=timezone.now() + timedelta(days=1)
+        )
+        assert invitation.role == 'enseignant'
+        assert invitation.email == 'invited@example.com'
+        assert invitation.inviter == inviter
+        assert invitation.status == 'pending'
 
-@pytest.mark.django_db
-@patch('roles.views.send_mail')
-def test_invite_user_view_post_valid_superadmin(mock_send_mail, client, superadmin_user):
-    client.login(username='superadmin', password='testpass123')
-    data = {
-        'email': 'newuser@example.com',
-        'role': 'admin'
-    }
-    response = client.post(reverse('roles:invite'), data)
-    assert response.status_code == 302
-    assert response.url == reverse('roles:invite')
-    assert Invitation.objects.filter(invitee_email='newuser@example.com', role='admin').exists()
-    assert mock_send_mail.called
+    def test_set_and_verify_pin(self):
+        inviter = create_user('pinuser', 'pin@example.com', 'admin')
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='pin@example.com',
+            inviter=inviter,
+            expires_at=timezone.now() + timedelta(days=1)
+        )
+        invitation.set_pin('123456')
+        invitation.save()
+        assert invitation.check_pin('123456') is True
+        assert invitation.check_pin('wrongpin') is False
 
-@pytest.mark.django_db
-def test_activate_account_valid(client, user):
-    user.is_active = False
-    user.save()
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = default_token_generator.make_token(user)
-    response = client.get(reverse('roles:activate', kwargs={'uidb64': uid, 'token': token}))
-    assert response.status_code == 302
-    assert response.url == reverse('roles:login')
-    user.refresh_from_db()
-    assert user.is_active is True
+    def test_invalid_pin_length(self):
+        inviter = create_user('pinuser', 'pin@example.com', 'admin')
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='pin@example.com',
+            inviter=inviter,
+            expires_at=timezone.now() + timedelta(days=1)
+        )
+        with pytest.raises(ValidationError):
+            invitation.set_pin('12345')  # Less than 6 digits
 
-@pytest.mark.django_db
-def test_activate_account_invalid(client, user):
-    user.is_active = False
-    user.save()
-    uid = urlsafe_base64_encode(force_bytes(user.pk))
-    response = client.get(reverse('roles:activate', kwargs={'uidb64': uid, 'token': 'invalid-token'}))
-    assert response.status_code == 302
-    assert response.url == reverse('roles:signup')
-    user.refresh_from_db()
-    assert user.is_active is False
+    def test_is_expired_logic(self):
+        inviter = create_user('expireuser', 'expire@example.com', 'admin')
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='expire@example.com',
+            inviter=inviter,
+            expires_at=timezone.now() - timedelta(days=1)
+        )
+        assert invitation.is_expired() is True
 
+    def test_inviter_role_restriction(self):
+        inviter = create_user('studentinviter', 'student@example.com', 'etudiant')
+        with pytest.raises(ValidationError):
+            Invitation.objects.create(
+                role='enseignant',
+                email='test@example.com',
+                inviter=inviter,
+                expires_at=timezone.now() + timedelta(days=1)
+            )
+
+    def test_admin_cannot_invite_admin(self):
+        inviter = create_user('admininviter', 'admin@example.com', 'admin')
+        with pytest.raises(ValidationError):
+            Invitation.objects.create(
+                role='admin',
+                email='test@example.com',
+                inviter=inviter,
+                expires_at=timezone.now() + timedelta(days=1)
+            )
+
+    def test_token_uniqueness(self):
+        inviter = create_user('tokenuser', 'token@example.com', 'admin')
+        token = uuid.uuid4()
+        Invitation.objects.create(
+            role='enseignant',
+            email='token1@example.com',
+            inviter=inviter,
+            token=token,
+            expires_at=timezone.now() + timedelta(days=1)
+        )
+        with pytest.raises(IntegrityError):
+            Invitation.objects.create(
+                role='enseignant',
+                email='token2@example.com',
+                inviter=inviter,
+                token=token,
+                expires_at=timezone.now() + timedelta(days=1)
+            )
+
+# Tests for Profile Models
 @pytest.mark.django_db
-@patch.object(User, 'get_redirect_url')
-def test_custom_login_view_success(mock_get_redirect_url, client, user):
-    mock_get_redirect_url.return_value = '/etudiant/dashboard/'
-    user.is_active = True
-    user.save()
-    data = {'username': 'student', 'password': 'testpass123'}
-    response = client.post(reverse('roles:login'), data)
-    assert response.status_code == 302
-    assert response.url == '/etudiant/dashboard/'
+class TestProfileModels:
+    def test_create_etudiant_profile(self):
+        user = create_user('student', 'student@example.com', 'etudiant')
+        profile = Etudiant.objects.create(user=user, filiere='Science', niveau='L1')
+        assert profile.user == user
+        assert profile.filiere == 'Science'
+        assert profile.niveau == 'L1'
+
+    def test_etudiant_profile_one_to_one(self):
+        user = create_user('student2', 'student2@example.com', 'etudiant')
+        Etudiant.objects.create(user=user)
+        with pytest.raises(IntegrityError):
+            Etudiant.objects.create(user=user)
+
+    def test_create_enseignant_profile(self):
+        user = create_user('teacher', 'teacher@example.com', 'enseignant')
+        profile = Enseignant.objects.create(user=user)
+        assert profile.user == user
+
+    def test_enseignant_profile_one_to_one(self):
+        user = create_user('teacher2', 'teacher2@example.com', 'enseignant')
+        Enseignant.objects.create(user=user)
+        with pytest.raises(IntegrityError):
+            Enseignant.objects.create(user=user)
+
+    def test_create_admin_profile(self):
+        user = create_user('adminuser', 'admin@example.com', 'admin')
+        profile = Admin.objects.create(user=user)
+        assert profile.user == user
+
+    def test_admin_profile_one_to_one(self):
+        user = create_user('admin2', 'admin2@example.com', 'admin')
+        Admin.objects.create(user=user)
+        with pytest.raises(IntegrityError):
+            Admin.objects.create(user=user)
+
+# Tests for Other Models
+@pytest.mark.django_db
+class TestOtherModels:
+    def test_create_annee(self):
+        annee = Annee.objects.create(annee='2023-2024')
+        assert annee.annee == '2023-2024'
+
+    def test_create_filiere(self):
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        assert filiere.nom_filiere == 'Informatique'
+
+    def test_create_niveau(self):
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        assert niveau.nom_niveau == 'L1'
+
+    def test_create_semestre(self):
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        assert semestre.nom_semestre == 'S1'
+
+    def test_create_matiere(self):
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        matiere = Matiere.objects.create(
+            nom_matiere='Algorithmique',
+            course_code='ALG101',
+            filiere=filiere,
+            semestre=semestre,
+            niveau=niveau
+        )
+        assert matiere.nom_matiere == 'Algorithmique'
+        assert matiere.course_code == 'ALG101'
+
+    def test_matiere_course_code_unique(self):
+        Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        with pytest.raises(IntegrityError):
+            Matiere.objects.create(nom_matiere='Physics', course_code='MATH101')
+
+    def test_create_matiere_commune(self):
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        matiere_commune = MatiereCommune.objects.create(
+            nom_matiere_commune='Math',
+            course_code='MATH101',
+            filiere=filiere,
+            semestre=semestre,
+            niveau=niveau
+        )
+        assert matiere_commune.nom_matiere_commune == 'Math'
+        assert matiere_commune.course_code == 'MATH101'
+
+    def test_create_note(self):
+        user = create_user('notestudent', 'notestudent@example.com', 'etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        matiere = Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        annee = Annee.objects.create(annee='2023-2024')
+        note = Note.objects.create(
+            etudiant=etudiant,
+            matiere=matiere,
+            cc_note=15.0,
+            normal_note=16.0,
+            note_final=15.5,
+            annee=annee
+        )
+        assert note.etudiant == etudiant
+        assert note.matiere == matiere
+        assert note.cc_note == 15.0
+
+    def test_note_unique_together_constraint(self):
+        # Create necessary objects
+        user = create_user('constraintuser', 'constraint@example.com', 'etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        matiere = Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        matiere_commune = MatiereCommune.objects.create(nom_matiere_commune='CommonMath', course_code='CMATH101')
+        annee = Annee.objects.create(annee='2023-2024')
+
+        # Create the first Note
+        Note.objects.create(
+            etudiant=etudiant,
+            matiere=matiere,
+            matiere_commune=matiere_commune,
+            cc_note=15.0,
+            normal_note=16.0,
+            note_final=15.5,
+            annee=annee
+        )
+
+        # Attempt to create a second Note with the same unique_together fields
+        with pytest.raises(IntegrityError):
+            Note.objects.create(
+                etudiant=etudiant,
+                matiere=matiere,
+                matiere_commune=matiere_commune,
+                cc_note=14.0,
+                normal_note=15.0,
+                note_final=14.5,
+                annee=annee
+            )
+
+    def test_create_profile_enseignant(self):
+        user = create_user('teacher', 'teacher@example.com', 'enseignant')
+        enseignant = Enseignant.objects.create(user=user)
+        annee = Annee.objects.create(annee='2023-2024')
+        matiere = Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        profile = ProfileEnseignant.objects.create(
+            enseignant=enseignant,
+            annee=annee,
+            matiere=matiere,
+            validated=True
+        )
+        assert profile.enseignant == enseignant
+        assert profile.validated is True
+
+    def test_create_profile_etudiant(self):
+        user = create_user('student', 'student@example.com', 'etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        matiere = Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        annee = Annee.objects.create(annee='2023-2024')
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        profile = ProfileEtudiant.objects.create(
+            etudiant=etudiant,
+            filiere=filiere,
+            matiere=matiere,
+            semestre=semestre,
+            annee=annee,
+            niveau=niveau
+        )
+        assert profile.etudiant == etudiant
+        assert profile.filiere == filiere
+
+    def test_profile_etudiant_unique_together(self):
+        user = create_user('constraintstudent', 'constraintstudent@example.com', 'etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        annee = Annee.objects.create(annee='2023-2024')
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        matiere = Matiere.objects.create(nom_matiere='Math', course_code='MATH101')
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        ProfileEtudiant.objects.create(
+            etudiant=etudiant,
+            filiere=filiere,
+            matiere=matiere,
+            semestre=semestre,
+            annee=annee,
+            niveau=niveau
+        )
+        with pytest.raises(IntegrityError):
+            ProfileEtudiant.objects.create(
+                etudiant=etudiant,
+                filiere=filiere,
+                matiere=matiere,
+                semestre=semestre,
+                annee=annee,
+                niveau=niveau
+            )
+
+    def test_etudiant_annee_unique_together(self):
+        user = create_user('yearstudent', 'yearstudent@example.com', 'etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        annee = Annee.objects.create(annee='2023-2024')
+        EtudiantAnnee.objects.create(etudiant=etudiant, annee=annee)
+        with pytest.raises(IntegrityError):
+            EtudiantAnnee.objects.create(etudiant=etudiant, annee=annee)
