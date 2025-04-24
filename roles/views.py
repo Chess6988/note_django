@@ -113,7 +113,7 @@ def signin(request):
             return redirect(user.get_redirect_url())
         else:
             messages.error(request, 'Invalid username or password.')
-    return render(request, 'signin.html')
+    return render(request, 'roles/signin.html')
 
 def verify_invitation(request, token):
     """Verify invitation PIN."""
@@ -140,7 +140,7 @@ def verify_invitation(request, token):
             messages.error(request, 'Please enter a valid PIN.')
     else:
         form = PinForm()
-    return render(request, 'verify_invitation.html', {'form': form, 'token': token})
+    return render(request, 'roles/verify_invitation.html', {'form': form, 'token': token})
 
 def invited_signup(request, token):
     """Handle signup for invited roles."""
@@ -177,7 +177,7 @@ def invited_signup(request, token):
     else:
         form = DefaultSignUpForm(initial={'email': invitation.email})
         form.fields['email'].widget.attrs['readonly'] = True
-    return render(request, 'invited_signup.html', {'form': form, 'role': invitation.role})
+    return render(request, 'roles/invited_signup.html', {'form': form, 'role': invitation.role})
 
 @login_required
 @login_required
@@ -207,7 +207,7 @@ def send_invitation(request):
             messages.error(request, 'Please correct the errors below.')
     else:
         form = InvitationForm()
-    return render(request, 'send_invitation.html', {'form': form})
+    return render(request, 'roles/send_invitation.html', {'form': form})
 
 @login_required
 def etudiant_dashboard(request):
@@ -215,7 +215,7 @@ def etudiant_dashboard(request):
     if request.user.role != 'etudiant':
         messages.error(request, 'Access denied.')
         return redirect('signin')
-    return render(request, 'etudiant_dashboard.html')
+    return render(request, 'roles/etudiant_dashboard.html')
 
 def custom_404(request, exception):
     """Custom 404 handler."""
@@ -233,7 +233,7 @@ def enseignant_dashboard(request):
     if request.user.role != 'enseignant':
         messages.error(request, 'Access denied.')
         return redirect('signin')
-    return render(request, 'enseignant_dashboard.html')
+    return render(request, 'roles/enseignant_dashboard.html')
 
 @login_required
 def admin_panel(request):
@@ -241,7 +241,7 @@ def admin_panel(request):
     if request.user.role != 'admin':
         messages.error(request, 'Access denied.')
         return redirect('signin')
-    return render(request, 'admin_panel.html')
+    return render(request, 'roles/admin_panel.html')
 
 @login_required
 def superadmin_panel(request):
@@ -249,4 +249,4 @@ def superadmin_panel(request):
     if request.user.role != 'superadmin':
         messages.error(request, 'Access denied.')
         return redirect('signin')
-    return render(request, 'superadmin_panel.html')
+    return render(request, 'roles/superadmin_panel.html')
