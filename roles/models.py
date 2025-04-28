@@ -172,16 +172,16 @@ class MatiereCommune(models.Model):
 
 class Note(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
-    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere')  # Added blank=True
-    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')  # Added blank=True
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere')
+    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')
     cc_note = models.FloatField()
     normal_note = models.FloatField()
     note_final = models.FloatField()
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
 
     class Meta:
         db_table = 'notes'
-        unique_together = ('etudiant', 'matiere', 'matiere_commune', 'annee')
+        unique_together = ('etudiant', 'matiere', 'annee')  # Exclude matiere_commune if often NULL
 
 class EnseignantAnnee(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')

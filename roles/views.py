@@ -1,3 +1,5 @@
+from django.template.loader import render_to_string
+from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, authenticate
 from django.contrib import messages
@@ -20,7 +22,7 @@ def send_activation_email(user, request):
     token = default_token_generator.make_token(user)
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     activation_link = request.build_absolute_uri(
-        reverse('activate', kwargs={'uidb64': uid, 'token': token})
+        reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})  # Namespaced
     )
     subject = "Activate Your Account"
     message = render_to_string('activation_email.html', {
@@ -36,7 +38,7 @@ def send_activation_email(user, request):
 def etudiant_signup(request):
     """Handle Etudiant self-registration."""
     if request.user.is_authenticated:
-        return redirect(request.user.get_redirect_url())  # Redirect authenticated users
+        return redirect(request.user.get_redirect_url())
     if request.method == 'POST':
         form = DefaultSignUpForm(request.POST)
         if form.is_valid():
@@ -48,7 +50,7 @@ def etudiant_signup(request):
                 Etudiant.objects.create(user=user)
                 send_activation_email(user, request)
                 messages.success(request, 'Account created! Check your email to activate.')
-                return redirect('signin')
+                return redirect('roles:signin')  # Namespaced
             except IntegrityError:
                 messages.error(request, 'Username or email already exists.')
             except DatabaseError as e:
@@ -61,10 +63,7 @@ def etudiant_signup(request):
             messages.error(request, 'Please correct the errors below.')
     else:
         form = DefaultSignUpForm()
-    return render(request, 'signup.html', {'form': form})
-
-
-
+    return render(request, 'roles/signup.html', {'form': form})
 
 def activate_account(request, uidb64, token):
     """Activate user account via email token."""
@@ -77,10 +76,10 @@ def activate_account(request, uidb64, token):
         user.is_active = True
         user.save()
         messages.success(request, 'Account activated! Please sign in.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     else:
         messages.error(request, 'Invalid or expired activation link.')
-        return redirect('resend_activation')
+        return redirect('roles:resend_activation')  # Namespaced
 
 def resend_activation(request):
     """Resend activation email."""
@@ -97,10 +96,10 @@ def resend_activation(request):
             except Exception as e:
                 logger.error(f"Error resending activation: {e}")
                 messages.error(request, 'An error occurred. Please try again.')
-            return redirect('signin')
+            return redirect('roles:signin')  # Namespaced
     else:
         form = ResendActivationForm()
-    return render(request, 'resend_activation.html', {'form': form})
+    return render(request, 'roles/resend_activation.html', {'form': form})
 
 def signin(request):
     """Handle user login."""
@@ -120,16 +119,17 @@ def verify_invitation(request, token):
     invitation = get_object_or_404(Invitation, token=token, status='pending')
     if invitation.is_expired():
         messages.error(request, 'Invitation has expired.')
-        return redirect('signin')
+        return redirect('roles:signin')
     if invitation.attempt_count >= 3:
         messages.error(request, 'Invitation is invalidated due to too many attempts.')
-        return redirect('signin')
+        return redirect('roles:signin')
     if request.method == 'POST':
         form = PinForm(request.POST)
         if form.is_valid():
             pin = form.cleaned_data['pin']
+            logger.debug(f"PIN valid: {form.is_valid()}, PIN check: {invitation.check_pin(pin)}")
             if invitation.check_pin(pin):
-                return redirect('invited_signup', token=token)
+                return redirect('roles:invited_signup', token=token)
             else:
                 invitation.attempt_count += 1
                 if invitation.attempt_count >= 3:
@@ -147,7 +147,7 @@ def invited_signup(request, token):
     invitation = get_object_or_404(Invitation, token=token, status='pending')
     if invitation.is_expired() or invitation.attempt_count >= 3:
         messages.error(request, 'Invitation is no longer valid.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     if request.method == 'POST':
         form = DefaultSignUpForm(request.POST)
         if form.is_valid():
@@ -166,7 +166,7 @@ def invited_signup(request, token):
                 invitation.accepted_by = user
                 invitation.save()
                 messages.success(request, 'Account created! Check your email to activate.')
-                return redirect('signin')
+                return redirect('roles:signin')  # Namespaced
             except IntegrityError:
                 messages.error(request, 'Username or email already exists.')
             except DatabaseError as e:
@@ -180,12 +180,11 @@ def invited_signup(request, token):
     return render(request, 'roles/invited_signup.html', {'form': form, 'role': invitation.role})
 
 @login_required
-@login_required
 def send_invitation(request):
     """Send an invitation (Admin/Superadmin only)."""
     if request.user.role not in ['superadmin', 'admin']:
         messages.error(request, 'You do not have permission to send invitations.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     if request.method == 'POST':
         form = InvitationForm(request.POST)
         if form.is_valid():
@@ -195,9 +194,9 @@ def send_invitation(request):
                 raw_pin = ''.join([str(random.randint(0, 9)) for _ in range(6)])
                 invitation.set_pin(raw_pin)
                 invitation.save()
-                link = request.build_absolute_uri(reverse('verify_invitation', args=[invitation.token]))
+                link = request.build_absolute_uri(reverse('roles:verify_invitation', args=[invitation.token]))  # Namespaced
                 messages.success(request, f'Invitation sent! Link: {link}, PIN: {raw_pin}')
-                return redirect(request.user.get_redirect_url())  # Updated redirect
+                return redirect(request.user.get_redirect_url())
             except ValidationError as e:
                 messages.error(request, str(e))
             except Exception as e:
@@ -214,25 +213,15 @@ def etudiant_dashboard(request):
     """Etudiant dashboard."""
     if request.user.role != 'etudiant':
         messages.error(request, 'Access denied.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/etudiant_dashboard.html')
-
-def custom_404(request, exception):
-    """Custom 404 handler."""
-    return render(request, '404.html', status=404)
-
-def custom_500(request):
-    """Custom 500 handler."""
-    return render(request, '500.html', status=500)
-
-
 
 @login_required
 def enseignant_dashboard(request):
     """Enseignant (Teacher) dashboard."""
     if request.user.role != 'enseignant':
         messages.error(request, 'Access denied.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/enseignant_dashboard.html')
 
 @login_required
@@ -240,7 +229,7 @@ def admin_panel(request):
     """Admin dashboard."""
     if request.user.role != 'admin':
         messages.error(request, 'Access denied.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/admin_panel.html')
 
 @login_required
@@ -248,5 +237,5 @@ def superadmin_panel(request):
     """Superadmin dashboard."""
     if request.user.role != 'superadmin':
         messages.error(request, 'Access denied.')
-        return redirect('signin')
+        return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/superadmin_panel.html')

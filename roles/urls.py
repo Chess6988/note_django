@@ -18,5 +18,3 @@ urlpatterns = [
     path('superadmin/panel/', views.superadmin_panel, name='superadmin_panel'),
 ]
 
-handler404 = 'roles.views.custom_404'
-handler500 = 'roles.views.custom_500'
