@@ -18,11 +18,15 @@ from .models import (
 # Fixtures
 @pytest.fixture
 def user_instance():
-    return User.objects.create(username='testuser', email='test@example.com', phone_number='1234567890')
+    return User.objects.create(username='testuser', email='test@example.com', phone_number='1234567890', role='enseignant')
 
 @pytest.fixture
-def invitation_instance():
-    return Invitation.objects.create(role='enseignant', email='teacher@example.com')
+def admin_user():
+    return User.objects.create(username='adminuser', email='admin@example.com', role='admin', password='adminpass')
+
+@pytest.fixture
+def invitation_instance(admin_user):
+    return Invitation.objects.create(inviter=admin_user, role='enseignant', email='teacher@example.com', pin='123456')
 
 # Test Classes for Model Forms with Custom Initial Values
 @pytest.mark.django_db
@@ -30,13 +34,13 @@ class TestUserAdminForm:
     def test_initial_values(self):
         form = UserAdminForm()
         assert form.initial.get('phone_number') == '', "Phone number initial value should be empty for new instances"
-        user = User.objects.create(phone_number='1234567890')
+        user = User.objects.create(phone_number='1234567890', username='tempuser', email='temp@example.com', role='enseignant')
         form = UserAdminForm(instance=user)
         assert form.initial['phone_number'] == '1234567890', "Phone number should match instance value"
 
     def test_fields_present(self):
         form = UserAdminForm()
-        expected_fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+        expected_fields = ['username', 'email', 'first_name', 'last_name', 'phone_number', 'role', 'password', 'date_joined']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in UserAdminForm"
 
@@ -46,25 +50,30 @@ class TestUserAdminForm:
             'email': 'newuser@example.com',
             'first_name': 'New',
             'last_name': 'User',
-            'phone_number': '9876543210'
+            'phone_number': '9876543210',
+            'password': 'dummy_password',
+            'role': 'enseignant',
+            'is_active': True,
+            'is_staff': False,
+            'date_joined': '2023-01-01 00:00:00',  # Added required field
         }
         form = UserAdminForm(data=data)
-        assert form.is_valid(), "Form should be valid with correct data"
+        assert form.is_valid(), f"Form should be valid with correct data. Errors: {form.errors}"
         user = form.save()
         assert user.phone_number == '9876543210', "Saved user should have the provided phone number"
 
 @pytest.mark.django_db
 class TestInvitationAdminForm:
-    def test_initial_values(self):
+    def test_initial_values(self, admin_user):
         form = InvitationAdminForm()
         assert form.initial.get('pin') == '', "Pin initial value should be empty for new instances"
-        invitation = Invitation.objects.create(pin='123456')
+        invitation = Invitation.objects.create(inviter=admin_user, role='enseignant', email='test@example.com', pin='123456')
         form = InvitationAdminForm(instance=invitation)
         assert form.initial['pin'] == '123456', "Pin should match instance value"
 
     def test_fields_present(self):
         form = InvitationAdminForm()
-        expected_fields = ['role', 'email', 'pin']
+        expected_fields = ['inviter', 'role', 'email', 'pin']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in InvitationAdminForm"
 
@@ -78,7 +87,7 @@ class TestAdminAdminForm:
             assert field in form.fields, f"Field {field} should be present in AdminAdminForm"
 
     def test_form_submission(self):
-        user = User.objects.create(username='adminuser')
+        user = User.objects.create(username='adminuser2', email='admin2@example.com', role='admin')
         data = {'user': user.id}
         form = AdminAdminForm(data=data)
         assert form.is_valid(), "Form should be valid with correct data"
@@ -94,7 +103,7 @@ class TestEnseignantAdminForm:
             assert field in form.fields, f"Field {field} should be present in EnseignantAdminForm"
 
     def test_form_submission(self):
-        user = User.objects.create(username='teacher')
+        user = User.objects.create(username='teacher2', email='teacher2@example.com', role='enseignant')
         data = {'user': user.id}
         form = EnseignantAdminForm(data=data)
         assert form.is_valid(), "Form should be valid with correct data"
@@ -113,7 +122,7 @@ class TestEtudiantAdminForm:
 class TestMatiereAdminForm:
     def test_fields_present(self):
         form = MatiereAdminForm()
-        expected_fields = ['name']
+        expected_fields = ['nom_matiere', 'course_code', 'filiere', 'semestre', 'niveau']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in MatiereAdminForm"
 
@@ -121,7 +130,7 @@ class TestMatiereAdminForm:
 class TestMatiereCommuneAdminForm:
     def test_fields_present(self):
         form = MatiereCommuneAdminForm()
-        expected_fields = ['name']
+        expected_fields = ['nom_matiere_commune', 'course_code', 'filiere', 'semestre', 'niveau']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in MatiereCommuneAdminForm"
 
@@ -129,7 +138,7 @@ class TestMatiereCommuneAdminForm:
 class TestNoteAdminForm:
     def test_fields_present(self):
         form = NoteAdminForm()
-        expected_fields = ['value']
+        expected_fields = ['etudiant', 'matiere', 'matiere_commune', 'cc_note', 'normal_note', 'note_final', 'annee']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in NoteAdminForm"
 
@@ -153,7 +162,7 @@ class TestProfileEtudiantAdminForm:
 class TestAnneeForm:
     def test_fields_present(self):
         form = AnneeForm()
-        expected_fields = ['year']
+        expected_fields = ['annee']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in AnneeForm"
 
@@ -161,7 +170,7 @@ class TestAnneeForm:
 class TestFiliereForm:
     def test_fields_present(self):
         form = FiliereForm()
-        expected_fields = ['name']
+        expected_fields = ['nom_filiere']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in FiliereForm"
 
@@ -169,7 +178,7 @@ class TestFiliereForm:
 class TestNiveauForm:
     def test_fields_present(self):
         form = NiveauForm()
-        expected_fields = ['level']
+        expected_fields = ['nom_niveau']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in NiveauForm"
 
@@ -177,7 +186,7 @@ class TestNiveauForm:
 class TestSemestreForm:
     def test_fields_present(self):
         form = SemestreForm()
-        expected_fields = ['number']
+        expected_fields = ['nom_semestre']
         for field in expected_fields:
             assert field in form.fields, f"Field {field} should be present in SemestreForm"
 
@@ -218,16 +227,16 @@ class TestMatiereCommuneEtudiantForm:
 class TestDefaultSignUpForm:
     def test_field_validations(self):
         valid_data = {
-            'username': 'testuser',
-            'email': 'test@example.com',
+            'username': 'testuser_unique',
+            'email': 'testunique@example.com',
             'first_name': 'Test',
             'last_name': 'User',
             'phone_number': '1234567890',
-            'password1': 'password123',
-            'password2': 'password123'
+            'password1': 'MySup3rS3cretP@ssw0rd',  # Stronger password
+            'password2': 'MySup3rS3cretP@ssw0rd',  # Matching stronger password
         }
         form = DefaultSignUpForm(data=valid_data)
-        assert form.is_valid(), "Form should be valid with correct data"
+        assert form.is_valid(), f"Form should be valid with correct data. Errors: {form.errors}"
         invalid_data = valid_data.copy()
         invalid_data['phone_number'] = 'abc'
         form = DefaultSignUpForm(data=invalid_data)
@@ -241,13 +250,13 @@ class TestDefaultSignUpForm:
 
     def test_password_matching(self):
         data = {
-            'username': 'testuser',
-            'email': 'test@example.com',
+            'username': 'testuser2',
+            'email': 'test2@example.com',
             'first_name': 'Test',
             'last_name': 'User',
             'phone_number': '1234567890',
-            'password1': 'password123',
-            'password2': 'different'
+            'password1': 'MySup3rS3cretP@ssw0rd',  # Stronger password
+            'password2': 'different',
         }
         form = DefaultSignUpForm(data=data)
         assert not form.is_valid(), "Form should be invalid if passwords don't match"
@@ -255,18 +264,18 @@ class TestDefaultSignUpForm:
 
     def test_form_save(self):
         data = {
-            'username': 'newuser',
-            'email': 'newuser@example.com',
+            'username': 'newuser_unique',
+            'email': 'newuserunique@example.com',
             'first_name': 'New',
             'last_name': 'User',
             'phone_number': '1234567890',
-            'password1': 'password123',
-            'password2': 'password123'
+            'password1': 'MySup3rS3cretP@ssw0rd',  # Stronger password
+            'password2': 'MySup3rS3cretP@ssw0rd',  # Matching stronger password
         }
         form = DefaultSignUpForm(data=data)
-        assert form.is_valid(), "Form should be valid with correct data"
+        assert form.is_valid(), f"Form should be valid with correct data. Errors: {form.errors}"
         user = form.save()
-        assert user.check_password('password123'), "Saved user should have the correct password"
+        assert user.check_password('MySup3rS3cretP@ssw0rd'), "Saved user should have the correct password"
 
 @pytest.mark.django_db
 class TestPinForm:
