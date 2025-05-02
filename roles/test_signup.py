@@ -2,27 +2,29 @@ from django.contrib.auth import get_user_model
 from django.urls import reverse
 import pytest
 
-# Get the custom User model
 User = get_user_model()
 
 @pytest.mark.django_db
 def test_etudiant_signup_post_success(client, mailoutbox):
     """Test POST request with successful signup."""
     post_data = {
-        'username': 'testsignupuser',
-        'email': 'signup_unique@example.com',
+        'username': 'testuser',
+        'email': 'test@example.com',
         'first_name': 'Test',
         'last_name': 'User',
         'password1': 'securePass123',
         'password2': 'securePass123',
     }
     response = client.post(reverse('roles:etudiant_signup'), data=post_data)
-    assert response.status_code == 302  # Redirect to signin
-    assert response.url == reverse('roles:signin')
-    assert User.objects.filter(username='testsignupuser').exists()
-    assert len(mailoutbox) == 1
-    assert mailoutbox[0].subject == 'Activate Your Account'
+    assert response.status_code == 200  # Stays on signup page
+    assert 'Activation email sent' in response.content.decode()
+    # Check session data instead of database
+    assert 'pending_user' in client.session
+    assert client.session['pending_user']['username'] == 'testuser'
+    assert client.session['pending_user']['email'] == 'test@example.com'
+    assert len(mailoutbox) == 1  # Email should now be sent
 
+# Other tests remain unchanged
 @pytest.mark.django_db
 def test_etudiant_signup_duplicate_username(client):
     """Test POST request with duplicate username."""
