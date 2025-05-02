@@ -15,7 +15,7 @@ class User(AbstractUser):
     ]
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
-    phone_number = models.CharField(max_length=15, default='0000000000')
+ 
     email = models.EmailField(unique=True)
     
     class Meta:
@@ -36,9 +36,7 @@ class User(AbstractUser):
         }
         return redirect_urls.get(self.role, '/signin/')
     
-    def clean(self):
-        if not self.phone_number.isdigit():
-            raise ValidationError("Phone number must contain only digits.")
+    
 
 class Invitation(models.Model):
     ROLE_CHOICES = User.ROLE_CHOICES

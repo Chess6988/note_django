@@ -95,19 +95,15 @@ class TestModels:
         """Test creating a User with valid data."""
         user = User.objects.create_user(
             username='testuser', email='test@example.com', password='password', role='etudiant',
-            first_name='Test', last_name='User', phone_number='1234567890'
+            first_name='Test', last_name='User'
+            
         )
         assert user.role == 'etudiant'
         assert user.get_redirect_url() == '/etudiant/dashboard/'
         assert user.check_password('password')
         assert str(user) == 'Test User (etudiant)'
 
-    @pytest.mark.django_db
-    def test_user_phone_number_validation(self):
-        """Test User phone_number validation."""
-        user = User(username='testuser', email='test@example.com', phone_number='abc')
-        with pytest.raises(ValidationError, match="Phone number must contain only digits."):
-            user.clean()
+
 
     @pytest.mark.django_db
     def test_invitation_pin(self):
@@ -178,23 +174,13 @@ class TestForms:
         """Test DefaultSignUpForm with valid data."""
         data = {
             'username': 'testuser', 'email': 'test@example.com', 'first_name': 'Test',
-            'last_name': 'User', 'phone_number': '1234567890', 'password1': 'testpass123',
+            'last_name': 'User', 
+              'password1': 'testpass123',
             'password2': 'testpass123'
         }
         form = DefaultSignUpForm(data=data)
         assert form.is_valid()
 
-    @pytest.mark.django_db
-    def test_default_signup_form_invalid_phone(self):
-        """Test DefaultSignUpForm with invalid phone_number."""
-        data = {
-            'username': 'testuser', 'email': 'test@example.com', 'first_name': 'Test',
-            'last_name': 'User', 'phone_number': 'abc', 'password1': 'testpass123',
-            'password2': 'testpass123'
-        }
-        form = DefaultSignUpForm(data=data)
-        assert not form.is_valid()
-        assert 'phone_number' in form.errors
 
     def test_pin_form_valid(self):
         """Test PinForm with valid PIN."""
@@ -246,7 +232,8 @@ class TestViews:
             'email': f'newuser_{unique_suffix}@example.com',
             'first_name': 'New',
             'last_name': 'User',
-            'phone_number': '1234567890',
+           
+           
             'password1': 'testpass123',
             'password2': 'testpass123'
         }
@@ -267,7 +254,8 @@ class TestViews:
             'email': 'newemail@example.com',
             'first_name': 'New',
             'last_name': 'User',
-            'phone_number': '1234567890',
+          
+          
             'password1': 'testpass123',
             'password2': 'testpass123'
         }

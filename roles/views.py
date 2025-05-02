@@ -47,10 +47,11 @@ def etudiant_signup(request):
                 user.role = 'etudiant'
                 user.is_active = False
                 user.save()
-                Etudiant.objects.create(user=user)
+                Etudiant.objects.create(user=user)  # Create Etudiant instance
+           
                 send_activation_email(user, request)
                 messages.success(request, 'Account created! Check your email to activate.')
-                return redirect('roles:signin')  # Namespaced
+                return redirect('roles:signin')
             except IntegrityError:
                 messages.error(request, 'Username or email already exists.')
             except DatabaseError as e:
@@ -64,6 +65,7 @@ def etudiant_signup(request):
     else:
         form = DefaultSignUpForm()
     return render(request, 'roles/signup.html', {'form': form})
+
 
 def activate_account(request, uidb64, token):
     """Activate user account via email token."""

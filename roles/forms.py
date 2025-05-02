@@ -134,16 +134,11 @@ class MatiereCommuneEtudiantForm(forms.ModelForm):
 
 
 class DefaultSignUpForm(UserCreationForm):
-    phone_number = forms.CharField(
-        max_length=15,
-        validators=[RegexValidator(r'^\d+$', "Phone number must contain only digits.")],
-        widget=forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'Phone Number'}),
-        help_text="Enter your phone number (digits only)."
-    )
+
     
     class Meta:
         model = User
-        fields = ['username', 'email', 'first_name', 'last_name', 'phone_number']
+        fields = ['username', 'email', 'first_name', 'last_name']
         widgets = {
             'username': forms.TextInput(attrs={'class': 'form-control', 'aria-label': 'Username'}),
             'email': forms.EmailInput(attrs={'class': 'form-control', 'aria-label': 'Email'}),

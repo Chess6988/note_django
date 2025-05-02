@@ -18,13 +18,13 @@ from .forms import (
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     form = UserAdminForm  # Link custom form
-    list_display = ('username', 'email', 'role', 'first_name', 'last_name', 'phone_number', 'is_staff')
-    search_fields = ('username', 'email', 'first_name', 'last_name', 'phone_number')
+    list_display = ('username', 'email', 'role', 'first_name', 'last_name',  'is_staff')
+    search_fields = ('username', 'email', 'first_name', 'last_name', )
     list_filter = ('role', 'is_staff', 'is_superuser')
     
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'email', 'phone_number', 'role')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email',  'role')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
@@ -32,7 +32,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('username', 'email', 'password1', 'password2', 'role', 'phone_number'),
+            'fields': ('username', 'email', 'password1', 'password2', 'role', ),
         }),
     )
 
