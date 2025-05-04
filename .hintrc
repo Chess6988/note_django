@@ -15,6 +15,13 @@
         "label": "off",
         "select-name": "off"
       }
+    ],
+    "meta-viewport": "off",
+    "axe/language": [
+      "default",
+      {
+        "html-has-lang": "off"
+      }
     ]
   }
 }

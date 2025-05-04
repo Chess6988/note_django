@@ -4,8 +4,9 @@ from django.template.loader import render_to_string
 from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect, get_object_or_404
 from django.contrib.auth import login, authenticate, logout
+from django.contrib.auth.hashers import check_password
 from django.contrib import messages
-from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode, base36_to_int
 from django.utils.encoding import force_bytes, force_str
 from django.contrib.auth.tokens import default_token_generator,   PasswordResetTokenGenerator
 from django.core.mail import send_mail
@@ -14,6 +15,9 @@ from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 import logging
 import random
+import datetime
+from django.utils.crypto import constant_time_compare
+
 
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
@@ -24,14 +28,32 @@ logger = logging.getLogger(__name__)
 
 
 
-class SignupTokenGenerator(PasswordResetTokenGenerator):
+class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
     def _make_hash_value(self, user, timestamp):
-        # Use username and email instead of pk for unsaved user
-        return f"{user.username}{user.email}{timestamp}"
-    
+        return (
+            str(user.pk) + str(timestamp) +
+            str(user.is_active) + str(user.email) +
+            str(user.username)
+        )
+    def check_token(self, user, token):
+        if not (user and token):
+            return False
+        try:
+            ts_b36, _ = token.split("-")
+            ts = base36_to_int(ts_b36)
+        except ValueError:
+            return False
+        if (self._num_seconds(self._now()) - ts) > (15 * 60):  # 15 minutes
+            return False
+        return super().check_token(user, token)
+
+short_lived_token_generator = ShortLivedTokenGenerator()
+
+
+
 def send_activation_email(user_data, request):
-    """Send an activation email with a 24-hour token using session data."""
-    token = default_token_generator.make_token(user_data)  # Token based on user_data (not saved user)
+    """Send an activation email with a 15-second token using session data."""
+    token = short_lived_token_generator.make_token(user_data)  # Use custom token generator
     uid = urlsafe_base64_encode(force_bytes(user_data.pk))  # Temporary ID from session
     activation_link = request.build_absolute_uri(
         reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
@@ -59,11 +81,14 @@ def etudiant_signup(request):
                 user = form.save(commit=False)
                 user.role = 'etudiant'
                 user.is_active = False
+                user.set_password(form.cleaned_data['password1'])  # Hash the password
                 # Store user data in session instead of saving to DB
                 request.session['pending_user'] = {
                     'username': user.username,
                     'email': user.email,
-                    'password': form.cleaned_data['password1'],  # Store raw password securely in session
+                    'first_name': form.cleaned_data['first_name'],  # Store first_name
+                    'last_name': form.cleaned_data['last_name'],    # Store last_name
+                    'password': user.password,  # Store hashed password
                     'role': user.role,
                     'is_active': user.is_active,
                 }
@@ -84,25 +109,42 @@ def activate_account(request, uidb64, token):
     """Activate user account via email token."""
     try:
         uid = force_str(urlsafe_base64_decode(uidb64))
-        # Check if session has pending user data
         pending_user = request.session.get('pending_user')
         if not pending_user:
             raise ValueError("No pending user data found.")
         user = User(
             username=pending_user['username'],
             email=pending_user['email'],
+            first_name=pending_user['first_name'],
+            last_name=pending_user['last_name'],
             role=pending_user['role'],
             is_active=pending_user['is_active']
         )
-        user.set_password(pending_user['password'])  # Set password from session
-    except (TypeError, ValueError, OverflowError):
+        user.password = pending_user['password']
+    except (TypeError, ValueError, OverflowError) as e:
         user = None
-    if user and default_token_generator.check_token(user, token):
-        messages.success(request, 'Account activated! Please sign in.')
-        return redirect('roles:signin')
+        messages.error(request, f'Invalid activation link: {str(e)}')
+        return redirect('roles:resend_activation')
+    
+    if user and short_lived_token_generator.check_token(user, token):
+        user.is_active = True
+        try:
+            user.save()
+            if user.role == 'etudiant':
+                Etudiant.objects.create(user=user)
+            del request.session['pending_user']
+            messages.success(request, 'Account activated! Please sign in.')
+            return redirect('roles:signin')
+        except IntegrityError:
+            logger.error(f"IntegrityError: User {user.username} already exists")
+            messages.error(request, 'User already exists.')
+            return redirect('roles:resend_activation')
     else:
+        logger.error(f"Token check failed for user {user.username if user else 'None'}")
         messages.error(request, 'Invalid or expired activation link.')
         return redirect('roles:resend_activation')
+
+    
 
 def resend_activation(request):
     """Resend activation email."""
@@ -115,10 +157,12 @@ def resend_activation(request):
                 user = User(
                     username=pending_user['username'],
                     email=pending_user['email'],
+                    first_name=pending_user['first_name'],  # Include first_name
+                    last_name=pending_user['last_name'],    # Include last_name
                     role=pending_user['role'],
                     is_active=pending_user['is_active']
                 )
-                user.set_password(pending_user['password'])
+                user.password = pending_user['password']  # Set hashed password directly
                 try:
                     send_activation_email(user, request)
                     messages.success(request, 'Activation email resent. Check your email.')
@@ -138,38 +182,54 @@ def signin(request):
         username = request.POST.get('username')
         password = request.POST.get('password')
         pending_user = request.session.get('pending_user')
+        logger.info(f"Signin attempt for {username}, pending_user: {pending_user}")
         if pending_user and pending_user['username'] == username:
-            user = User(
-                username=pending_user['username'],
-                email=pending_user['email'],
-                role=pending_user['role'],
-                is_active=True  # Activate upon successful signin
-            )
-            user.set_password(pending_user['password'])
-            if user.check_password(password):
-                # Save the user to the database now
+            logger.info(f"Checking password for {username}")
+            if check_password(password, pending_user['password']):
+                user = User(
+                    username=pending_user['username'],
+                    email=pending_user['email'],
+                    first_name=pending_user['first_name'],
+                    last_name=pending_user['last_name'],
+                    role=pending_user['role'],
+                    is_active=True
+                )
+                user.password = pending_user['password']
                 try:
                     user.save()
-                    Etudiant.objects.create(user=user)
+                    if user.role == 'etudiant':
+                        Etudiant.objects.create(user=user)
                     login(request, user)
-                    # Clear the session data after successful signin
                     del request.session['pending_user']
-                    return redirect(user.get_redirect_url())
+                    logger.info(f"User {username} logged in, redirecting to etudiant_dashboard")
+                    return redirect('roles:etudiant_dashboard')
                 except IntegrityError:
-                    messages.error(request, 'Username or email already exists in the system.')
-                except DatabaseError as e:
-                    logger.error(f"Database error during signin: {e}")
-                    messages.error(request, 'An error occurred. Please try again later.')
+                    logger.error(f"IntegrityError: Username {username} or email already exists")
+                    messages.error(request, 'Username or email already exists.')
+                except Exception as e:
+                    logger.error(f"Error during signin: {e}")
+                    messages.error(request, 'An error occurred. Please try again.')
             else:
+                logger.error(f"Invalid password for {username}")
                 messages.error(request, 'Invalid password.')
         else:
+            logger.info(f"Checking non-pending user {username}")
             user = authenticate(request, username=username, password=password)
             if user:
                 login(request, user)
-                return redirect(user.get_redirect_url())
+                logger.info(f"User {username} logged in")
+                if user.role == 'etudiant':
+                    return redirect('roles:etudiant_dashboard')
+                else:
+                    messages.info(request, 'Login successful. Please proceed to your dashboard.')
+                    return render(request, 'roles/signin.html')  # Or redirect to a generic page
             else:
+                logger.error(f"Invalid username or password for {username}")
                 messages.error(request, 'Invalid username or password.')
+    logger.info("Rendering signin.html")
     return render(request, 'roles/signin.html')
+
+
 
 
 def verify_invitation(request, token):
@@ -185,7 +245,6 @@ def verify_invitation(request, token):
         form = PinForm(request.POST)
         if form.is_valid():
             pin = form.cleaned_data['pin']
-            logger.debug(f"PIN valid: {form.is_valid()}, PIN check: {invitation.check_pin(pin)}")
             if invitation.check_pin(pin):
                 return redirect('roles:invited_signup', token=token)
             else:

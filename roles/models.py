@@ -73,6 +73,7 @@ class Invitation(models.Model):
         if len(raw_pin) != 6 or not raw_pin.isdigit():
             raise ValidationError("PIN must be a 6-digit number.")
         self.pin = make_password(raw_pin)
+        self.save()  # Save the hashed PIN to the database
     
     def check_pin(self, raw_pin):
         return check_password(raw_pin, self.pin)

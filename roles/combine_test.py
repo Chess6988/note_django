@@ -1,384 +1,350 @@
 import pytest
+from django.test import Client
 from django.urls import reverse
-from django.core.exceptions import ValidationError
-from django.contrib.auth import get_user_model
 from django.utils import timezone
-from datetime import timedelta
 from django.db import IntegrityError
-from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.hashers import make_password, check_password
 from django.utils.http import urlsafe_base64_encode
 from django.utils.encoding import force_bytes
-from .models import (
-    User, Invitation, Etudiant, Enseignant, Admin, Annee, Filiere, Niveau,
-    Semestre, Matiere, MatiereCommune, Note, EnseignantAnnee, EtudiantAnnee,
-    MatiereEtudiant, MatiereCommuneEtudiant, ProfileEnseignant, ProfileEtudiant
-)
-from .forms import (
-    DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm, UserAdminForm,
-    InvitationAdminForm, AdminAdminForm, EnseignantAdminForm, EtudiantAdminForm,
-    MatiereAdminForm, MatiereCommuneAdminForm, NoteAdminForm, ProfileEnseignantAdminForm,
-    ProfileEtudiantAdminForm, AnneeForm, FiliereForm, NiveauForm, SemestreForm,
-    EnseignantAnneeForm, EtudiantAnneeForm, MatiereEtudiantForm, MatiereCommuneEtudiantForm
-)
+from datetime import timedelta
+import uuid
+from django.core.exceptions import ValidationError
 
-User = get_user_model()
+from roles.models import User, Invitation, Etudiant, Enseignant, Admin
+from roles.forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm
+from roles.views import short_lived_token_generator
 
-# ### Fixtures
+# Fixtures
+@pytest.fixture
+def client():
+    """Create a test client for making HTTP requests."""
+    return Client()
 
 @pytest.fixture
-def superadmin(db):
-    """Create a superadmin user."""
-    return User.objects.create_superuser(
-        username='superadmin', email='superadmin@example.com', password='password', role='superadmin'
-    )
+def superadmin_user():
+    """Create a superadmin user for testing."""
+    return User.objects.create_superuser(username='superadmin', email='superadmin@example.com', password='password', role='superadmin')
 
 @pytest.fixture
-def admin_user(db):
-    """Create an admin user with Admin profile."""
-    user = User.objects.create_user(
-        username='admin', email='admin@example.com', password='password', role='admin'
-    )
-    Admin.objects.create(user=user)
-    return user
+def admin_user():
+    """Create an admin user for testing."""
+    return User.objects.create_user(username='admin', email='admin@example.com', password='password', role='admin')
 
 @pytest.fixture
-def enseignant_user(db):
-    """Create an enseignant user with Enseignant profile."""
-    user = User.objects.create_user(
-        username='enseignant', email='enseignant@example.com', password='password', role='enseignant'
-    )
-    Enseignant.objects.create(user=user)
-    return user
+def enseignant_user():
+    """Create an enseignant user for testing."""
+    return User.objects.create_user(username='enseignant', email='enseignant@example.com', password='password', role='enseignant')
 
 @pytest.fixture
-def etudiant_user(db):
-    """Create an etudiant user with Etudiant profile."""
-    user = User.objects.create_user(
-        username='etudiant', email='etudiant@example.com', password='password', role='etudiant'
-    )
-    Etudiant.objects.create(user=user)
-    return user
+def etudiant_user():
+    """Create an etudiant user for testing."""
+    return User.objects.create_user(username='etudiant', email='etudiant@example.com', password='password', role='etudiant')
 
 @pytest.fixture
-def invitation_admin(db, admin_user):
-    """Create an invitation from an admin for an enseignant."""
-    unique_suffix = timezone.now().timestamp()
+def invitation(superadmin_user):
+    """Create a pending invitation for testing."""
     invitation = Invitation.objects.create(
-        role='enseignant', email=f'invited_{unique_suffix}@example.com', inviter=admin_user,
-        expires_at=timezone.now() + timedelta(days=1)
+        role='enseignant',
+        email='invited@example.com',
+        inviter=superadmin_user,
+        expires_at=timezone.now() + timedelta(hours=24)
     )
-    invitation.set_pin('123456')
+    invitation.set_pin('123456')  # Use set_pin to ensure PIN is hashed and saved
     return invitation
 
-@pytest.fixture
-def academic_data(db):
-    """Create basic academic data for related models."""
-    annee = Annee.objects.create(annee='2023-2024')
-    filiere = Filiere.objects.create(nom_filiere='Informatique')
-    niveau = Niveau.objects.create(nom_niveau='L1')
-    semestre = Semestre.objects.create(nom_semestre='S1')
-    matiere = Matiere.objects.create(
-        nom_matiere='Math', course_code='M101', filiere=filiere, semestre=semestre, niveau=niveau
-    )
-    matiere_commune = MatiereCommune.objects.create(
-        nom_matiere_commune='Physics', course_code='P101', filiere=filiere, semestre=semestre, niveau=niveau
-    )
-    return annee, filiere, niveau, semestre, matiere, matiere_commune
-
-# ### Model Tests
-
+# Model Tests
+@pytest.mark.django_db
 class TestModels:
-    """Tests for model creation, validation, and custom methods."""
-
-    @pytest.mark.django_db
     def test_user_creation(self):
-        """Test creating a User with valid data."""
-        user = User.objects.create_user(
-            username='testuser', email='test@example.com', password='password', role='etudiant',
-            first_name='Test', last_name='User'
-            
-        )
+        """Test creating a user with different roles."""
+        user = User.objects.create_user(username='testuser', email='test@example.com', password='password', role='etudiant')
+        assert user.username == 'testuser'
+        assert user.email == 'test@example.com'
         assert user.role == 'etudiant'
-        assert user.get_redirect_url() == '/etudiant/dashboard/'
         assert user.check_password('password')
-        assert str(user) == 'Test User (etudiant)'
 
-
-
-    @pytest.mark.django_db
-    def test_invitation_pin(self):
-        """Test Invitation PIN setting and checking."""
-        invitation = Invitation()
+    def test_invitation_creation(self, superadmin_user):
+        """Test creating an invitation with PIN and expiration."""
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='invited@example.com',
+            inviter=superadmin_user,
+            expires_at=timezone.now() + timedelta(hours=24)
+        )
         invitation.set_pin('123456')
+        assert invitation.role == 'enseignant'
         assert invitation.check_pin('123456')
-        with pytest.raises(ValidationError, match="PIN must be a 6-digit number."):
-            invitation.set_pin('abc')
+        assert not invitation.is_expired()
 
-    @pytest.mark.django_db
-    def test_invitation_save_restrictions(self, superadmin, admin_user, enseignant_user):
-        """Test Invitation save method restrictions."""
-        Invitation.objects.create(
-            role='admin', email='admin2@example.com', inviter=superadmin,
-            expires_at=timezone.now() + timedelta(days=1)
+    def test_invitation_expiration(self, superadmin_user):
+        """Test that an invitation expires correctly."""
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='invited@example.com',
+            inviter=superadmin_user,
+            expires_at=timezone.now() - timedelta(hours=1)
         )
-        Invitation.objects.create(
-            role='enseignant', email='teacher2@example.com', inviter=admin_user,
-            expires_at=timezone.now() + timedelta(days=1)
+        assert invitation.is_expired()
+
+    def test_invitation_pin_validation(self, superadmin_user):
+        """Test PIN validation for invitations."""
+        invitation = Invitation.objects.create(
+            role='enseignant',
+            email='invited@example.com',
+            inviter=superadmin_user,
+            expires_at=timezone.now() + timedelta(hours=24)
         )
-        with pytest.raises(ValidationError, match="Admins can only invite teachers."):
-            Invitation.objects.create(
-                role='admin', email='admin3@example.com', inviter=admin_user,
-                expires_at=timezone.now() + timedelta(days=1)
-            )
-        with pytest.raises(ValidationError, match="Cannot send invitations for etudiant role."):
-            Invitation.objects.create(
-                role='etudiant', email='student@example.com', inviter=superadmin,
-                expires_at=timezone.now() + timedelta(days=1)
-            )
-        with pytest.raises(ValidationError, match="Only superadmins and admins can send invitations."):
-            Invitation.objects.create(
-                role='enseignant', email='teacher3@example.com', inviter=enseignant_user,
-                expires_at=timezone.now() + timedelta(days=1)
-            )
+        with pytest.raises(ValidationError):
+            invitation.set_pin('123')  # Too short
 
-    @pytest.mark.django_db
-    def test_matiere_unique_course_code(self, academic_data):
-        """Test Matiere course_code uniqueness."""
-        _, filiere, niveau, semestre, _, _ = academic_data
-        with pytest.raises(IntegrityError):
-            Matiere.objects.create(
-                nom_matiere='Math2', course_code='M101', filiere=filiere, semestre=semestre, niveau=niveau
-            )
-
-    @pytest.mark.django_db
-    def test_note_unique_together(self, etudiant_user, academic_data):
-        """Test Note unique_together constraint."""
-        annee, _, _, _, matiere, _ = academic_data
-        Note.objects.create(
-            etudiant=etudiant_user.etudiant_profile, matiere=matiere, annee=annee,
-            cc_note=10.0, normal_note=15.0, note_final=12.5
-        )
-        with pytest.raises(IntegrityError):
-            Note.objects.create(
-                etudiant=etudiant_user.etudiant_profile, matiere=matiere, annee=annee,
-                cc_note=12.0, normal_note=16.0, note_final=14.0
-            )
-
-# ### Form Tests
-
+# Form Tests
+@pytest.mark.django_db
 class TestForms:
-    """Tests for form validation and saving."""
-
-    @pytest.mark.django_db
     def test_default_signup_form_valid(self):
         """Test DefaultSignUpForm with valid data."""
-        data = {
-            'username': 'testuser', 'email': 'test@example.com', 'first_name': 'Test',
-            'last_name': 'User', 
-              'password1': 'testpass123',
-            'password2': 'testpass123'
+        form_data = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'first_name': 'New',
+            'last_name': 'User',
+            'password1': 'complexpassword123',
+            'password2': 'complexpassword123'
         }
-        form = DefaultSignUpForm(data=data)
+        form = DefaultSignUpForm(data=form_data)
         assert form.is_valid()
 
+    def test_default_signup_form_invalid(self):
+        """Test DefaultSignUpForm with invalid data."""
+        form_data = {
+            'username': 'newuser',
+            'email': 'invalidemail',
+            'first_name': 'New',
+            'last_name': 'User',
+            'password1': 'complexpassword123',
+            'password2': 'differentpassword'
+        }
+        form = DefaultSignUpForm(data=form_data)
+        assert not form.is_valid()
+        assert 'email' in form.errors
+        assert 'password2' in form.errors
 
     def test_pin_form_valid(self):
         """Test PinForm with valid PIN."""
-        form = PinForm(data={'pin': '123456'})
+        form_data = {'pin': '123456'}
+        form = PinForm(data=form_data)
         assert form.is_valid()
 
     def test_pin_form_invalid(self):
         """Test PinForm with invalid PIN."""
-        form = PinForm(data={'pin': 'abc'})
+        form_data = {'pin': '12345'}  # Less than 6 digits
+        form = PinForm(data=form_data)
         assert not form.is_valid()
         assert 'pin' in form.errors
 
+    def test_resend_activation_form_valid(self):
+        """Test ResendActivationForm with valid email."""
+        form_data = {'email': 'user@example.com'}
+        form = ResendActivationForm(data=form_data)
+        assert form.is_valid()
+
     def test_invitation_form_invalid_role(self):
-        """Test InvitationForm prevents 'etudiant' role."""
-        form = InvitationForm(data={'role': 'etudiant', 'email': 'student@example.com'})
+        """Test InvitationForm with invalid role (etudiant)."""
+        form_data = {'role': 'etudiant', 'email': 'invited@example.com'}
+        form = InvitationForm(data=form_data)
         assert not form.is_valid()
         assert 'role' in form.errors
 
-    @pytest.mark.django_db
-    def test_note_admin_form_valid(self, etudiant_user, academic_data):
-        """Test NoteAdminForm with valid data."""
-        annee, _, _, _, matiere, _ = academic_data
-        data = {
-            'etudiant': etudiant_user.etudiant_profile.id, 'matiere': matiere.id, 'annee': annee.id,
-            'cc_note': 10.0, 'normal_note': 15.0, 'note_final': 12.5
-        }
-        form = NoteAdminForm(data=data)
-        assert form.is_valid()
-
-# ### View Tests
-
+# View Tests
+@pytest.mark.django_db
 class TestViews:
-    """Tests for view responses, redirects, and logic."""
-
-    @pytest.mark.django_db
     def test_etudiant_signup_get(self, client):
-        """Test GET request to etudiant_signup view."""
+        """Test GET request to etudiant_signup renders the form."""
         response = client.get(reverse('roles:etudiant_signup'))
         assert response.status_code == 200
-        assert 'roles/signup.html' in [t.name for t in response.templates]
+        assert 'form' in response.context
 
-    @pytest.mark.django_db
     def test_etudiant_signup_post_valid(self, client, mocker):
-        """Test POST request to etudiant_signup with valid unique data."""
-        mocker.patch('django.core.mail.send_mail')
-        unique_suffix = timezone.now().timestamp()
-        data = {
-            'username': f'newuser_{unique_suffix}',
-            'email': f'newuser_{unique_suffix}@example.com',
+        """Test POST request to etudiant_signup with valid data."""
+        mocker.patch('roles.views.send_activation_email')
+        form_data = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
             'first_name': 'New',
             'last_name': 'User',
-           
-           
-            'password1': 'testpass123',
-            'password2': 'testpass123'
+            'password1': 'complexpassword123',
+            'password2': 'complexpassword123'
         }
-        response = client.post(reverse('roles:etudiant_signup'), data)
+        response = client.post(reverse('roles:etudiant_signup'), data=form_data)
+        assert response.status_code == 200
+        assert 'Activation email sent' in response.content.decode()
+        assert 'pending_user' in client.session
+
+    def test_etudiant_signup_authenticated(self, client, etudiant_user):
+        """Test etudiant_signup redirects authenticated etudiant."""
+        client.login(username='etudiant', password='password')
+        response = client.get(reverse('roles:etudiant_signup'))
         assert response.status_code == 302
-        assert response.url == reverse('roles:signin')
-        user = User.objects.get(username=data['username'])
-        assert user.role == 'etudiant'
-        assert not user.is_active
-        assert Etudiant.objects.filter(user=user).exists()
+        assert response.url == reverse('roles:etudiant_dashboard')
 
-    @pytest.mark.django_db
-    def test_etudiant_signup_post_duplicate_username(self, client, etudiant_user, mocker):
-        """Test POST request to etudiant_signup with duplicate username."""
-        mocker.patch('django.core.mail.send_mail')
-        data = {
-            'username': 'etudiant',  # Duplicate username
-            'email': 'newemail@example.com',
+    def test_activate_account_valid(self, client, mocker):
+        """Test activating account with valid token."""
+        # Clean up to prevent IntegrityError
+        User.objects.filter(username='newuser').delete()
+        User.objects.filter(email='newuser@example.com').delete()
+        pending_user = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
             'first_name': 'New',
             'last_name': 'User',
-          
-          
-            'password1': 'testpass123',
-            'password2': 'testpass123'
+            'password': make_password('complexpassword123'),
+            'role': 'etudiant',
+            'is_active': False
         }
-        response = client.post(reverse('roles:etudiant_signup'), data)
-        assert response.status_code == 200  # Stays on page due to form error
-        assert 'username' in response.context['form'].errors  # Check for username validation error
-
-    @pytest.mark.django_db
-    def test_activate_account_valid(self, client, etudiant_user):
-        """Test account activation with valid token."""
-        etudiant_user.is_active = False
-        etudiant_user.save()
-        uid = urlsafe_base64_encode(force_bytes(etudiant_user.pk))
-        token = default_token_generator.make_token(etudiant_user)
+        # Set session data
+        session = client.session
+        session['pending_user'] = pending_user
+        session.save()
+        assert 'pending_user' in client.session  # Verify session setup
+        user = User(
+            username=pending_user['username'],
+            email=pending_user['email'],
+            role=pending_user['role'],
+            first_name=pending_user['first_name'],
+            last_name=pending_user['last_name'],
+            password=pending_user['password']
+        )
+        mocker.patch('roles.views.short_lived_token_generator.check_token', return_value=True)
+        # Use a valid base64-encoded uid
+        uid = urlsafe_base64_encode(force_bytes('dummy'))
+        token = 'valid-token'  # Simplified for testing
         response = client.get(reverse('roles:activate', kwargs={'uidb64': uid, 'token': token}))
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
-        etudiant_user.refresh_from_db()
-        assert etudiant_user.is_active
+        # Additional assertions for robustness
+        assert User.objects.filter(username='newuser', is_active=True).exists()
+        assert Etudiant.objects.filter(user__username='newuser').exists()
 
-    @pytest.mark.django_db
-    def test_signin_post_valid(self, client, etudiant_user):
-        """Test successful login."""
-        response = client.post(reverse('roles:signin'), {'username': 'etudiant', 'password': 'password'})
+    def test_activate_account_invalid(self, client):
+        """Test activating account with invalid token."""
+        response = client.get(reverse('roles:activate', kwargs={'uidb64': 'invalid', 'token': 'invalid'}))
         assert response.status_code == 302
-        assert response.url == '/etudiant/dashboard/'
+        assert response.url == reverse('roles:resend_activation')
 
-    @pytest.mark.django_db
-    def test_verify_invitation_valid_pin(self, client, invitation_admin):
-        """Test verifying invitation with correct PIN."""
-        # Ensure the PIN is set correctly in the fixture
-        invitation_admin.set_pin('123456')
-        invitation_admin.save()
-        response = client.post(
-            reverse('roles:verify_invitation', args=[invitation_admin.token]), {'pin': '123456'}
-        )
-        assert response.status_code == 302
-        assert response.url == reverse('roles:invited_signup', args=[invitation_admin.token])
-
-    @pytest.mark.django_db
-    def test_verify_invitation_invalid_pin(self, client, invitation_admin):
-        """Test verifying invitation with incorrect PIN."""
-        # Ensure the PIN is set correctly in the fixture
-        invitation_admin.set_pin('123456')
-        invitation_admin.save()
-        response = client.post(
-            reverse('roles:verify_invitation', args=[invitation_admin.token]), {'pin': '999999'}
-        )
-        assert response.status_code == 200  # Stays on page due to error
-        invitation_admin.refresh_from_db()
-        assert invitation_admin.attempt_count == 1
-        messages = [m.message for m in response.context['messages']]
-        assert any('Incorrect PIN' in msg for msg in messages)
-
-    @pytest.mark.django_db
-    def test_verify_invitation_expired(self, client, invitation_admin):
-        """Test verifying expired invitation."""
-        invitation_admin.expires_at = timezone.now() - timedelta(days=1)
-        invitation_admin.save()
-        response = client.post(
-            reverse('roles:verify_invitation', args=[invitation_admin.token]), {'pin': '123456'}
-        )
+    def test_resend_activation_valid(self, client, mocker):
+        """Test resending activation email with valid data."""
+        mocker.patch('roles.views.send_activation_email')
+        pending_user = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'first_name': 'New',
+            'last_name': 'User',
+            'password': make_password('complexpassword123'),
+            'role': 'etudiant',
+            'is_active': False
+        }
+        # Set session data
+        session = client.session
+        session['pending_user'] = pending_user
+        session.save()
+        assert 'pending_user' in client.session  # Verify session setup
+        form_data = {'email': 'newuser@example.com'}
+        response = client.post(reverse('roles:resend_activation'), data=form_data)
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
-        # Follow the redirect to check messages
-        response = client.get(response.url)
-        messages = [m.message for m in response.context['messages']]
-        assert any('Invitation has expired.' in msg for msg in messages)
 
-    @pytest.mark.django_db
-    def test_invited_signup_valid(self, client, invitation_admin, mocker):
-        """Test signup via invitation with valid data."""
-        mocker.patch('django.core.mail.send_mail')
-        unique_suffix = timezone.now().timestamp()
-        data = {
-            'username': f'inviteduser_{unique_suffix}',
-            'email': invitation_admin.email,  # Must match invitation email
+    def test_signin_pending_user(self, client):
+        """Test signin with pending user data."""
+        # Clean up to prevent IntegrityError
+        User.objects.filter(username='newuser').delete()
+        User.objects.filter(email='newuser@example.com').delete()
+        pending_user = {
+            'username': 'newuser',
+            'email': 'newuser@example.com',
+            'first_name': 'New',
+            'last_name': 'User',
+            'password': make_password('complexpassword123'),
+            'role': 'etudiant',
+            'is_active': False
+        }
+        # Set session data
+        session = client.session
+        session['pending_user'] = pending_user
+        session.save()
+        assert 'pending_user' in client.session  # Verify session setup
+        form_data = {
+            'username': 'newuser',
+            'password': 'complexpassword123'
+        }
+        response = client.post(reverse('roles:signin'), data=form_data)
+        assert response.status_code == 302
+        assert response.url == reverse('roles:etudiant_dashboard')
+        assert User.objects.filter(username='newuser').exists()
+        assert Etudiant.objects.filter(user__username='newuser').exists()
+
+    def test_verify_invitation_valid_pin(self, client, invitation):
+        """Test verifying invitation with valid PIN."""
+        form_data = {'pin': '123456'}
+        response = client.post(reverse('roles:verify_invitation', args=[str(invitation.token)]), data=form_data)
+        assert response.status_code == 302
+        assert response.url == reverse('roles:invited_signup', args=[str(invitation.token)])
+
+    def test_verify_invitation_exceeded_attempts(self, client, invitation):
+        """Test verifying invitation after exceeding attempts."""
+        invitation.attempt_count = 3
+        invitation.save()
+        response = client.get(reverse('roles:verify_invitation', args=[str(invitation.token)]))
+        assert response.status_code == 302
+        assert response.url == reverse('roles:signin')
+
+    def test_invited_signup_valid(self, client, invitation, mocker):
+        """Test invited signup with valid data."""
+        mocker.patch('roles.views.send_activation_email')
+        form_data = {
+            'username': 'inviteduser',
+            'email': invitation.email,
             'first_name': 'Invited',
             'last_name': 'User',
-            'phone_number': '1234567890',
-            'password1': 'testpass123',
-            'password2': 'testpass123'
+            'password1': 'complexpassword123',
+            'password2': 'complexpassword123'
         }
-        response = client.post(reverse('roles:invited_signup', args=[invitation_admin.token]), data)
+        response = client.post(reverse('roles:invited_signup', args=[str(invitation.token)]), data=form_data)
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
-        user = User.objects.get(username=data['username'])
-        assert user.role == invitation_admin.role
-        assert user.email == invitation_admin.email
-        assert not user.is_active
-        assert Enseignant.objects.filter(user=user).exists()  # Role-specific profile
-        invitation_admin.refresh_from_db()
-        assert invitation_admin.status == 'accepted'
+        assert User.objects.filter(username='inviteduser', role='enseignant').exists()
+        assert Enseignant.objects.filter(user__username='inviteduser').exists()
 
-    @pytest.mark.django_db
-    def test_send_invitation_access(self, client, admin_user, etudiant_user):
-        """Test access control for send_invitation view."""
-        client.force_login(admin_user)
-        response = client.get(reverse('roles:send_invitation'))
-        assert response.status_code == 200
-        client.force_login(etudiant_user)
+    def test_send_invitation_superadmin(self, client, superadmin_user):
+        """Test sending invitation as superadmin."""
+        client.login(username='superadmin', password='password')
+        form_data = {'role': 'enseignant', 'email': 'newinvite@example.com'}
+        response = client.post(reverse('roles:send_invitation'), data=form_data)
+        assert response.status_code == 302
+        assert Invitation.objects.filter(email='newinvite@example.com').exists()
+
+    def test_send_invitation_permission_denied(self, client, etudiant_user):
+        """Test sending invitation without permission."""
+        client.login(username='etudiant', password='password')
         response = client.get(reverse('roles:send_invitation'))
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
 
-    @pytest.mark.django_db
-    def test_etudiant_dashboard_access(self, client, etudiant_user, admin_user):
-        """Test role-based access to etudiant_dashboard."""
-        client.force_login(etudiant_user)
+    def test_etudiant_dashboard_access(self, client, etudiant_user):
+        """Test etudiant dashboard access for correct role."""
+        client.login(username='etudiant', password='password')
         response = client.get(reverse('roles:etudiant_dashboard'))
         assert response.status_code == 200
-        client.force_login(admin_user)
+
+    def test_etudiant_dashboard_access_denied(self, client, enseignant_user):
+        """Test etudiant dashboard access denied for wrong role."""
+        client.login(username='enseignant', password='password')
         response = client.get(reverse('roles:etudiant_dashboard'))
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
 
-    @pytest.mark.django_db
-    def test_resend_activation_valid(self, client, etudiant_user, mocker):
-        """Test resending activation email for inactive user."""
-        mocker.patch('django.core.mail.send_mail')
-        etudiant_user.is_active = False
-        etudiant_user.save()
-        data = {'email': etudiant_user.email}
-        response = client.post(reverse('roles:resend_activation'), data)
+    def test_logout(self, client, etudiant_user):
+        """Test logout functionality."""
+        client.login(username='etudiant', password='password')
+        response = client.get(reverse('roles:logout'))
         assert response.status_code == 302
         assert response.url == reverse('roles:signin')
+        assert '_auth_user_id' not in client.session

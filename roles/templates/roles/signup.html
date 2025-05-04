@@ -1,17 +1,24 @@
 {% extends 'base.html' %}
+
+{% block messages %}
+    {% if messages %}
+        <div class="messages">
+            {% for message in messages|slice:":1" %}
+                <div id="flash-message" class="alert alert-{{ message.tags }} d-none" role="alert">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+{% endblock %}
+
 {% block title %}Etudiant Signup{% endblock %}
+
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-md-6">
-        {% if messages %}
-            <div class="messages">
-                {% for message in messages %}
-                    <div class="alert alert-{{ message.tags }}">{{ message }}</div>
-                {% endfor %}
-            </div>
-        {% endif %}
         <h2 class="mb-4">Sign Up as Etudiant</h2>
-        <form method="post">
+        <form method="post" id="signup-form">
             {% csrf_token %}
             {% if form.non_field_errors %}
                 <div class="alert alert-danger">
@@ -34,11 +41,20 @@
                     {% endfor %}
                 </div>
             {% endfor %}
-            <button type="submit" class="btn btn-primary">Sign Up</button>
+            <button type="submit" class="btn btn-primary" id="signup-button">Sign Up</button>
         </form>
     </div>
 </div>
 
-
-
+<script>
+    document.getElementById('signup-form').addEventListener('submit', function(event) {
+        const flashMessage = document.getElementById('flash-message');
+        if (flashMessage) {
+            flashMessage.classList.remove('d-none');
+            setTimeout(function() {
+                flashMessage.style.display = 'none';
+            }, 6000);
+        }
+    });
+</script>
 {% endblock %}
