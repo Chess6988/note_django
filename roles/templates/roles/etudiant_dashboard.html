@@ -1,10 +1,36 @@
 {% extends 'base.html' %}
 {% block title %}Etudiant Dashboard{% endblock %}
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-8">
+<style>
+    .dashboard-container {
+        animation: fadeInUp 0.8s ease-out;
+    }
+    @keyframes fadeInUp {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+</style>
+
+<div class="row justify-content-center dashboard-container">
+    <div class="col-md-8 text-center">
         <h2 class="mb-4">Welcome, {{ user.first_name }}!</h2>
         <p>This is your Etudiant dashboard.</p>
+        <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
+            {% csrf_token %}
+            <button type="submit" class="btn btn-danger mt-3 d-flex align-items-center justify-content-center gap-2" title="Click to logout">
+                <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_lk80fpsm.json" background="transparent" speed="1" style="width: 30px; height: 30px;" loop autoplay></lottie-player>
+                Logout
+            </button>
+        </form>
     </div>
 </div>
+
+<!-- Lottie Player Library -->
+<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
 {% endblock %}

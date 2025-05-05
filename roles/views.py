@@ -1,4 +1,3 @@
-
 from django.conf import settings
 from django.template.loader import render_to_string
 from django.core.exceptions import ValidationError
@@ -8,9 +7,9 @@ from django.contrib.auth.hashers import check_password
 from django.contrib import messages
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode, base36_to_int
 from django.utils.encoding import force_bytes, force_str
-from django.contrib.auth.tokens import default_token_generator,   PasswordResetTokenGenerator
+from django.contrib.auth.tokens import default_token_generator, PasswordResetTokenGenerator
 from django.core.mail import send_mail
-from django.db import IntegrityError, DatabaseError
+from django.db import IntegrityError, DatabaseError, transaction
 from django.contrib.auth.decorators import login_required
 from django.urls import reverse
 import logging
@@ -18,15 +17,11 @@ import random
 import datetime
 from django.utils.crypto import constant_time_compare
 
-
-
 from roles_project.settings import DEFAULT_FROM_EMAIL
 from .models import User, Invitation, Etudiant, Enseignant, Admin
 from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm
 
 logger = logging.getLogger(__name__)
-
-
 
 class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
     def _make_hash_value(self, user, timestamp):
@@ -48,8 +43,6 @@ class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
         return super().check_token(user, token)
 
 short_lived_token_generator = ShortLivedTokenGenerator()
-
-
 
 def send_activation_email(user_data, request):
     """Send an activation email with a 15-second token using session data."""
@@ -78,26 +71,34 @@ def etudiant_signup(request):
         form = DefaultSignUpForm(request.POST)
         if form.is_valid():
             try:
-                user = form.save(commit=False)
-                user.role = 'etudiant'
-                user.is_active = False
-                user.set_password(form.cleaned_data['password1'])  # Hash the password
-                # Store user data in session instead of saving to DB
-                request.session['pending_user'] = {
-                    'username': user.username,
-                    'email': user.email,
-                    'first_name': form.cleaned_data['first_name'],  # Store first_name
-                    'last_name': form.cleaned_data['last_name'],    # Store last_name
-                    'password': user.password,  # Store hashed password
-                    'role': user.role,
-                    'is_active': user.is_active,
-                }
-                send_activation_email(user, request)
-                messages.success(request, 'Activation email sent. Please check your email to activate your account.')
-                return render(request, 'roles/signup.html', {'form': form})
+                with transaction.atomic():
+                    user = form.save(commit=False)
+                    user.role = 'etudiant'
+                    user.is_active = False
+                    user.set_password(form.cleaned_data['password1'])  # Hash the password
+                    user.save()
+
+                    # Generate activation token
+                    uid = urlsafe_base64_encode(force_bytes(user.pk))
+                    token = default_token_generator.make_token(user)
+                    activation_link = request.build_absolute_uri(
+                        reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
+                    )
+
+                    # Send activation email asynchronously
+                    send_mail(
+                        'Activate Your Account',
+                        f'Click the link to activate your account: {activation_link}',
+                        settings.DEFAULT_FROM_EMAIL,
+                        [user.email],
+                        fail_silently=False,
+                    )
+
+                    messages.success(request, 'Activation email sent. Please check your email to activate your account.')
+                    return redirect('roles:signin')
             except Exception as e:
                 logger.error(f"Unexpected error during signup: {e}")
-                messages.error(request, 'Email could not be sent. Please try again.')
+                messages.error(request, 'An error occurred. Please try again later.')
         else:
             messages.error(request, 'Please correct the errors below.')
     else:
@@ -143,8 +144,6 @@ def activate_account(request, uidb64, token):
         logger.error(f"Token check failed for user {user.username if user else 'None'}")
         messages.error(request, 'Invalid or expired activation link.')
         return redirect('roles:resend_activation')
-
-    
 
 def resend_activation(request):
     """Resend activation email."""
@@ -228,9 +227,6 @@ def signin(request):
                 messages.error(request, 'Invalid username or password.')
     logger.info("Rendering signin.html")
     return render(request, 'roles/signin.html')
-
-
-
 
 def verify_invitation(request, token):
     """Verify invitation PIN."""
@@ -356,8 +352,6 @@ def superadmin_panel(request):
         messages.error(request, 'Access denied.')
         return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/superadmin_panel.html')
-
-
 
 def logout_view(request):
     logout(request)

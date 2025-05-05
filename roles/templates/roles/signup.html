@@ -3,8 +3,8 @@
 {% block messages %}
     {% if messages %}
         <div class="messages">
-            {% for message in messages|slice:":1" %}
-                <div id="flash-message" class="alert alert-{{ message.tags }} d-none" role="alert">
+            {% for message in messages %}
+                <div id="flash-message-{{ forloop.counter }}" class="alert alert-{{ message.tags }} rounded-3 shadow-sm" role="alert">
                     {{ message }}
                 </div>
             {% endfor %}
@@ -15,13 +15,149 @@
 {% block title %}Etudiant Signup{% endblock %}
 
 {% block content %}
-<div class="row justify-content-center">
-    <div class="col-md-6">
-        <h2 class="mb-4">Sign Up as Etudiant</h2>
+<style>
+    /* Duolingo-exact styles */
+    body {
+        background-color: #FFFFFF;
+        font-family: 'Roboto', 'DIN Next Pro', sans-serif;
+        color: #4B4B4B;
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        min-height: 100vh;
+    }
+    .signup-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        max-width: 100%;
+    }
+    .signup-card {
+        background: #FFFFFF;
+        border-radius: 16px;
+        padding: 32px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+        max-width: 440px;
+        width: 100%;
+        text-align: center;
+    }
+    .signup-card h2 {
+        color: #1CB0F6;
+        font-size: 28px;
+        font-weight: 700;
+        margin-bottom: 24px;
+    }
+    .form-control {
+        border: 1px solid #E0E0E0;
+        border-radius: 8px;
+        padding: 12px 16px;
+        font-size: 16px;
+        width: 100%;
+        box-sizing: border-box;
+        transition: border-color 0.3s, box-shadow 0.3s;
+    }
+    .form-control:focus {
+        border-color: #58CC02;
+        box-shadow: 0 0 0 3px rgba(88, 204, 2, 0.2);
+        outline: none;
+    }
+    .form-label {
+        color: #4B4B4B;
+        font-size: 14px;
+        font-weight: 500;
+        text-align: left;
+        margin-bottom: 8px;
+        display: block;
+    }
+    .btn-primary {
+        background-color: #58CC02;
+        border: none;
+        border-radius: 28px;
+        padding: 14px;
+        width: 100%;
+        font-size: 18px;
+        font-weight: 700;
+        color: #FFFFFF;
+        cursor: pointer;
+        transition: background-color 0.3s, transform 0.2s;
+    }
+    .btn-primary:hover {
+        background-color: #4AB002;
+        transform: scale(1.02);
+    }
+    .btn-outline-secondary {
+        background-color: transparent;
+        border: 2px solid #1CB0F6;
+        border-radius: 28px;
+        padding: 12px;
+        width: 100%;
+        font-size: 16px;
+        font-weight: 600;
+        color: #1CB0F6;
+        transition: background-color 0.3s, color 0.3s;
+    }
+    .btn-outline-secondary:hover {
+        background-color: #1CB0F6;
+        color: #FFFFFF;
+    }
+    .alert {
+        background-color: #FF4B4B;
+        color: #FFFFFF;
+        border-radius: 8px;
+        padding: 12px;
+        margin-bottom: 16px;
+        font-size: 14px;
+    }
+    .invalid-feedback {
+        color: #FF4B4B;
+        font-size: 12px;
+        text-align: left;
+        margin-top: 4px;
+    }
+    .form-text {
+        color: #A0A0A0;
+        font-size: 12px;
+        text-align: left;
+        margin-top: 4px;
+    }
+    .character-container {
+        max-width: 180px;
+        margin-bottom: 20px;
+    }
+    .duo-character {
+        width: 100%;
+        height: auto;
+        display: block;
+        object-fit: contain;
+        animation: bounce 2.5s infinite ease-in-out, move-hands-legs 1.5s infinite ease-in-out;
+    }
+    @keyframes bounce {
+        0%, 100% { transform: translateY(0); }
+        50% { transform: translateY(-12px); }
+    }
+</style>
+
+<div class="signup-container">
+    <!-- Education-themed illustration -->
+    <div class="character-container">
+        <img 
+            src="https://upload.wikimedia.org/wikipedia/commons/e/ed/Wikimedia_in_Education_illustration_classroom.svg" 
+            alt="Education Illustration" 
+            class="duo-character" 
+            onerror="console.error('Failed to load image'); this.src='https://via.placeholder.com/180x180?text=Duo+Placeholder';"
+        >
+    </div>
+
+    <!-- Signup form -->
+    <div class="signup-card">
+        <h2>Sign Up as Etudiant</h2>
         <form method="post" id="signup-form">
             {% csrf_token %}
             {% if form.non_field_errors %}
-                <div class="alert alert-danger">
+                <div class="alert">
                     <ul>
                         {% for error in form.non_field_errors %}
                             <li>{{ error }}</li>
@@ -31,29 +167,46 @@
             {% endif %}
             {% for field in form %}
                 <div class="mb-3">
-                    {{ field.label_tag }}
+                    <label for="{{ field.id_for_label }}" class="form-label">{{ field.label }}</label>
                     {{ field }}
                     {% if field.help_text %}
-                        <small class="form-text text-muted">{{ field.help_text }}</small>
+                        <small class="form-text">{{ field.help_text }}</small>
                     {% endif %}
                     {% for error in field.errors %}
-                        <div class="invalid-feedback d-block">{{ error }}</div>
+                        <div class="invalid-feedback">{{ error }}</div>
                     {% endfor %}
                 </div>
             {% endfor %}
             <button type="submit" class="btn btn-primary" id="signup-button">Sign Up</button>
         </form>
+        <div class="mt-3">
+            <a href="{% url 'roles:signin' %}" class="btn btn-outline-secondary">Sign In</a>
+        </div>
     </div>
 </div>
 
 <script>
-    document.getElementById('signup-form').addEventListener('submit', function(event) {
-        const flashMessage = document.getElementById('flash-message');
-        if (flashMessage) {
-            flashMessage.classList.remove('d-none');
+    // Hide flash messages after 5 seconds
+    window.addEventListener('DOMContentLoaded', function() {
+        const flashMessages = document.querySelectorAll('[id^="flash-message-"]');
+        flashMessages.forEach(function(flashMessage) {
             setTimeout(function() {
                 flashMessage.style.display = 'none';
-            }, 6000);
+            }, 5000);
+        });
+    });
+
+    document.getElementById('signup-form').addEventListener('submit', function(event) {
+        // Only show flash messages if there are no form errors
+        const formErrors = document.querySelector('.alert');
+        if (!formErrors) {
+            const flashMessages = document.querySelectorAll('[id^="flash-message-"]');
+            flashMessages.forEach(function(flashMessage) {
+                flashMessage.classList.remove('d-none');
+                setTimeout(function() {
+                    flashMessage.style.display = 'none';
+                }, 6000);
+            });
         }
     });
 </script>
