@@ -132,10 +132,60 @@ class MatiereCommuneEtudiantForm(forms.ModelForm):
 
 # New forms for user interactions
 
+from django import forms
+from .models import ProfileEtudiant, Annee, Niveau, Filiere, Semestre, Matiere, MatiereCommune
+
+class StudentProfileForm(forms.ModelForm):
+    class Meta:
+        model = ProfileEtudiant
+        exclude = ['etudiant']
+        labels = {
+            'annee': 'Academic Year',
+            'niveau': 'Level',
+            'filiere': 'Field of Study',
+            'semestre': 'Semester',
+            'matiere': 'Subject',
+            'matiere_commune': 'Common Subject',
+        }
+        widgets = {
+            'annee': forms.Select(attrs={'class': 'form-control'}),
+            'niveau': forms.Select(attrs={'class': 'form-control'}),
+            'filiere': forms.Select(attrs={'class': 'form-control'}),
+            'semestre': forms.Select(attrs={'class': 'form-control'}),
+            'matiere': forms.Select(attrs={'class': 'form-control'}),
+            'matiere_commune': forms.Select(attrs={'class': 'form-control'}),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        # Set querysets for all dropdowns by default
+        self.fields['annee'].queryset = Annee.objects.all()
+        self.fields['niveau'].queryset = Niveau.objects.all()
+        self.fields['filiere'].queryset = Filiere.objects.all()
+        self.fields['semestre'].queryset = Semestre.objects.all()
+
+        # Initialize matiere and matiere_commune as empty
+        self.fields['matiere'].queryset = Matiere.objects.none()
+        self.fields['matiere_commune'].queryset = MatiereCommune.objects.none()
+
+        # Dynamically filter matiere and matiere_commune based on POST data
+        if self.data.get('filiere') and self.data.get('semestre') and self.data.get('niveau'):
+            try:
+                filiere_id = int(self.data.get('filiere'))
+                semestre_id = int(self.data.get('semestre'))
+                niveau_id = int(self.data.get('niveau'))
+                self.fields['matiere'].queryset = Matiere.objects.filter(
+                    filiere_id=filiere_id, semestre_id=semestre_id, niveau_id=niveau_id
+                )
+                self.fields['matiere_commune'].queryset = MatiereCommune.objects.filter(
+                    filiere_id=filiere_id, semestre_id=semestre_id, niveau_id=niveau_id
+                )
+            except (ValueError, TypeError) as e:
+                print(f"Error filtering matiere/matiere_commune: {e}")
+                self.fields['matiere'].queryset = Matiere.objects.none()
+                self.fields['matiere_commune'].queryset = MatiereCommune.objects.none()
 
 class DefaultSignUpForm(UserCreationForm):
-
-    
     class Meta:
         model = User
         fields = ['username', 'email', 'first_name', 'last_name']

@@ -16,10 +16,14 @@ import logging
 import random
 import datetime
 from django.utils.crypto import constant_time_compare
+import json
+from django.core.serializers.json import DjangoJSONEncoder
+
+
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
-from .models import User, Invitation, Etudiant, Enseignant, Admin
-from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm
+from .models import Annee, User, Invitation, Etudiant, Enseignant, Admin, ProfileEtudiant, Matiere, MatiereCommune
+from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm, StudentProfileForm
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +231,97 @@ def signin(request):
                 messages.error(request, 'Invalid username or password.')
     logger.info("Rendering signin.html")
     return render(request, 'roles/signin.html')
+
+
+
+
+
+# Etudiant creating his profile
+@login_required
+@login_required
+def create_profile(request):
+    if request.method == 'POST':
+        form = StudentProfileForm(request.POST)
+        if form.is_valid():
+            profile = form.save(commit=False)
+            profile.etudiant = request.user.etudiant_profile
+            profile.save()
+            return redirect('roles:home_etudiant')
+    else:
+        # Get the current academic year instance
+        current_annee = Annee.get_current_academic_year()
+        # Initialize the form with the current annee
+        form = StudentProfileForm(initial={'annee': current_annee})
+
+    return render(request, 'create_profile.html', {'form': form})
+
+    # Prepare data for dynamic filtering of matiere and matiere_commune
+    all_matieres = Matiere.objects.all().values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_data = {}
+    for m in all_matieres:
+        key = f"{m['filiere_id']}_{m['semestre_id']}_{m['niveau_id']}"
+        if key not in matiere_data:
+            matiere_data[key] = []
+        matiere_data[key].append({'id': m['id'], 'nom': m['nom_matiere']})
+
+    all_matieres_communes = MatiereCommune.objects.all().values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_commune_data = {}
+    for mc in all_matieres_communes:
+        key = f"{mc['filiere_id']}_{mc['semestre_id']}_{mc['niveau_id']}"
+        if key not in matiere_commune_data:
+            matiere_commune_data[key] = []
+        matiere_commune_data[key].append({'id': mc['id'], 'nom': mc['nom_matiere_commune']})
+
+    # Log the fetched data for debugging
+    logger.debug("Matiere Data: %s", matiere_data)
+    logger.debug("Matiere Commune Data: %s", matiere_commune_data)
+
+    context = {
+        'form': form,
+        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
+        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
+    }
+    return render(request, 'roles/create_profile.html', context)
+
+@login_required
+def home_etudiant(request):
+    # Handle form submission for POST requests
+    if request.method == 'POST':
+        form = StudentProfileForm(request.POST)
+        if form.is_valid():
+            profile = form.save(commit=False)
+            profile.etudiant = request.user.etudiant_profile  # Link to the current user's Etudiant instance
+            profile.save()
+            return redirect('roles:home_etudiant')  # Redirect on success
+    else:
+        form = StudentProfileForm()
+
+    # Prepare data for dynamic filtering of matiere and matiere_commune
+    all_matieres = Matiere.objects.all().values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_data = {}
+    for m in all_matieres:
+        key = f"{m['filiere_id']}_{m['semestre_id']}_{m['niveau_id']}"
+        if key not in matiere_data:
+            matiere_data[key] = []
+        matiere_data[key].append({'id': m['id'], 'nom': m['nom_matiere']})
+
+    all_matieres_communes = MatiereCommune.objects.all().values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_commune_data = {}
+    for mc in all_matieres_communes:
+        key = f"{mc['filiere_id']}_{mc['semestre_id']}_{mc['niveau_id']}"
+        if key not in matiere_commune_data:
+            matiere_commune_data[key] = []
+        matiere_commune_data[key].append({'id': mc['id'], 'nom': mc['nom_matiere_commune']})
+
+    context = {
+        'user': request.user,
+        'form': form,  # Include the form in the context
+        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
+        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
+    }
+    return render(request, 'roles/etudiant_dashboard.html', context)
+
+
 
 def verify_invitation(request, token):
     """Verify invitation PIN."""

@@ -15,7 +15,6 @@ class User(AbstractUser):
     ]
     
     role = models.CharField(max_length=20, choices=ROLE_CHOICES)
- 
     email = models.EmailField(unique=True)
     
     class Meta:
@@ -36,8 +35,6 @@ class User(AbstractUser):
         }
         return redirect_urls.get(self.role, '/signin/')
     
-    
-
 class Invitation(models.Model):
     ROLE_CHOICES = User.ROLE_CHOICES
     STATUS_CHOICES = [
@@ -73,7 +70,7 @@ class Invitation(models.Model):
         if len(raw_pin) != 6 or not raw_pin.isdigit():
             raise ValidationError("PIN must be a 6-digit number.")
         self.pin = make_password(raw_pin)
-        self.save()  # Save the hashed PIN to the database
+        self.save()
     
     def check_pin(self, raw_pin):
         return check_password(raw_pin, self.pin)
@@ -94,28 +91,55 @@ class Invitation(models.Model):
         super().save(*args, **kwargs)
 
 class Annee(models.Model):
-    annee = models.CharField(max_length=9, null=True, blank=True)  # Added blank=True
+    annee = models.CharField(max_length=9, unique=True)  # e.g., "2023-2024", unique and required
 
     class Meta:
         db_table = 'annees'
 
-class Filiere(models.Model):
-    nom_filiere = models.CharField(max_length=50)
+    def __str__(self):
+        return self.annee
 
-    class Meta:
-        db_table = 'filieres'
+    @staticmethod
+    def get_current_academic_year_str():
+        """Calculate the current academic year string based on today's date."""
+        today = timezone.now().date()
+        year = today.year
+        if today.month < 9:  # Before September
+            return f"{year - 1}-{year}"
+        else:  # September or later
+            return f"{year}-{year + 1}"
+
+    @classmethod
+    def get_current_academic_year(cls):
+        """Get or create the Annee instance for the current academic year."""
+        current_year_str = cls.get_current_academic_year_str()
+        # Get or create the Annee object; returns (instance, created) tuple
+        annee_instance, _ = cls.objects.get_or_create(annee=current_year_str)
+        return annee_instance
 
 class Niveau(models.Model):
     nom_niveau = models.CharField(max_length=50)
-
     class Meta:
         db_table = 'niveaux'
+    
+    def __str__(self):
+        return self.nom_niveau
+
+class Filiere(models.Model):
+    nom_filiere = models.CharField(max_length=50)
+    class Meta:
+        db_table = 'filieres'
+    
+    def __str__(self):
+        return self.nom_filiere
 
 class Semestre(models.Model):
     nom_semestre = models.CharField(max_length=50)
-
     class Meta:
         db_table = 'semestres'
+    
+    def __str__(self):
+        return self.nom_semestre
 
 class Admin(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='admin_profile')
@@ -158,6 +182,9 @@ class Matiere(models.Model):
 
     class Meta:
         db_table = 'matieres'
+    
+    def __str__(self):
+        return self.nom_matiere
 
 class MatiereCommune(models.Model):
     nom_matiere_commune = models.CharField(max_length=100)
@@ -168,6 +195,9 @@ class MatiereCommune(models.Model):
 
     class Meta:
         db_table = 'matieres_communes'
+    
+    def __str__(self):
+        return self.nom_matiere_commune
 
 class Note(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
@@ -180,20 +210,20 @@ class Note(models.Model):
 
     class Meta:
         db_table = 'notes'
-        unique_together = ('etudiant', 'matiere', 'annee')  # Exclude matiere_commune if often NULL
+        unique_together = ('etudiant', 'matiere', 'annee')
 
 class EnseignantAnnee(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
-
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    
     class Meta:
         db_table = 'enseignants_annees'
         unique_together = ('enseignant', 'annee')
 
 class EtudiantAnnee(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
-
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    
     class Meta:
         db_table = 'etudiants_annees'
         unique_together = ('etudiant', 'annee')
@@ -201,8 +231,8 @@ class EtudiantAnnee(models.Model):
 class MatiereEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
-
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    
     class Meta:
         db_table = 'matieres_etudiants'
         unique_together = ('etudiant', 'matiere', 'annee')
@@ -210,21 +240,21 @@ class MatiereEtudiant(models.Model):
 class MatiereCommuneEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, db_column='id_matiere_commune')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
-
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    
     class Meta:
         db_table = 'matieres_communes_etudiants'
         unique_together = ('etudiant', 'matiere_commune', 'annee')
 
 class ProfileEnseignant(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
-    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere')  # Added blank=True
-    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')  # Added blank=True
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere')
+    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')
     validated = models.BooleanField(default=False)
     date_creation = models.DateTimeField(auto_now_add=True)
     new_entry = models.BooleanField(default=True)
-
+    
     class Meta:
         db_table = 'profile_enseignant'
 
@@ -233,10 +263,10 @@ class ProfileEtudiant(models.Model):
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
     semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')  # Added blank=True
+    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
-    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')  # Added blank=True
-
+    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')
+    
     class Meta:
         db_table = 'profile_etudiant'
         unique_together = ('etudiant', 'annee')

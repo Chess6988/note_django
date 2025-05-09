@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Create Student Profile</title>
+</head>
+<body>
+    <h1>Create Your Profile</h1>
+    <form method="post" action="{% url 'roles:create_profile' %}">
+        {% csrf_token %}
+        <div>
+            <label for="id_annee">Academic Year:</label>
+            {{ form.annee }}
+            {{ form.annee.errors }}
+        </div>
+        <div>
+            <label for="id_niveau">Level:</label>
+            {{ form.niveau }}
+            {{ form.niveau.errors }}
+        </div>
+        <div>
+            <label for="id_filiere">Field of Study:</label>
+            {{ form.filiere }}
+            {{ form.filiere.errors }}
+        </div>
+        <div>
+            <label for="id_semestre">Semester:</label>
+            {{ form.semestre }}
+            {{ form.semestre.errors }}
+        </div>
+        <div>
+            <label for="id_matiere">Subject:</label>
+            {{ form.matiere }}
+            {{ form.matiere.errors }}
+        </div>
+        <div>
+            <label for="id_matiere_commune">Common Subject (Optional):</label>
+            {{ form.matiere_commune }}
+            {{ form.matiere_commune.errors }}
+        </div>
+        <button type="submit" class="btn btn-primary">Create Profile</button>
+    </form>
+
+</body>
+</html>

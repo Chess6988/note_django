@@ -1,9 +1,11 @@
 {% extends 'base.html' %}
 {% block title %}Etudiant Dashboard{% endblock %}
+
 {% block content %}
 <style>
     .dashboard-container {
         animation: fadeInUp 0.8s ease-out;
+        margin-top: 50px;
     }
     @keyframes fadeInUp {
         from {
@@ -15,22 +17,283 @@
             transform: translateY(0);
         }
     }
+    .profile-card {
+        border-radius: 1rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+        background-color: #ffffff;
+        padding: 2rem;
+    }
+    .select-wrapper {
+        position: relative;
+    }
+    .select-wrapper select {
+        padding-right: 30px;
+        appearance: none;
+    }
+    .select-wrapper::after {
+        content: '\25BC'; /* Chevron down icon */
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        pointer-events: none;
+        color: #495057;
+    }
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
 </style>
 
-<div class="row justify-content-center dashboard-container">
-    <div class="col-md-8 text-center">
-        <h2 class="mb-4">Welcome, {{ user.first_name }}!</h2>
-        <p>This is your Etudiant dashboard.</p>
-        <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
-            {% csrf_token %}
-            <button type="submit" class="btn btn-danger mt-3 d-flex align-items-center justify-content-center gap-2" title="Click to logout">
-                <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_lk80fpsm.json" background="transparent" speed="1" style="width: 30px; height: 30px;" loop autoplay></lottie-player>
-                Logout
-            </button>
-        </form>
+<div class="container dashboard-container">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card profile-card">
+                <div class="card-body text-center">
+                    <h3 class="card-title">Welcome, {{ user.first_name }}!</h3>
+                    <p class="card-text text-muted">Your account setup is not yet completed.</p>
+
+                    <!-- Profile Information -->
+                    <div class="my-4">
+                        <p><strong>Email:</strong> {{ user.email }}</p>
+                        <p><strong>Username:</strong> {{ user.username }}</p>
+                    </div>
+
+                    <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#createProfileModal">
+                        Create Profile
+                    </button>
+
+                    <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
+                        {% csrf_token %}
+                        <button type="submit" class="btn btn-outline-danger d-flex align-items-center justify-content-center gap-2" title="Click to logout">
+                            <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_lk80fpsm.json" background="transparent" speed="1" style="width: 30px; height: 30px;" loop autoplay></lottie-player>
+                            Logout
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
 </div>
 
+<!-- Modal for Profile Creation -->
+<div class="modal fade" id="createProfileModal" tabindex="-1" aria-labelledby="createProfileModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="createProfileModalLabel">Create Your Profile</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p>Please select your academic details to enable subject selections.</p>
+                <form method="post" action="{% url 'roles:home_etudiant' %}">
+                    {% csrf_token %}
+                    <div class="form-group select-wrapper">
+                        <label for="id_annee">Academic Year:</label>
+                        <select id="id_annee" name="annee" class="form-control">
+                            <option value="">Select Academic Year</option>
+                            {% for annee in form.annee.field.choices %}
+                                <option value="{{ annee.0 }}">{{ annee.1 }}</option>
+                            {% endfor %}
+                        </select>
+                        {{ form.annee.errors }}
+                    </div>
+                    <div class="form-group select-wrapper">
+                        <label for="id_niveau">Level:</label>
+                        <select id="id_niveau" name="niveau" class="form-control">
+                            <option value="">Select Level</option>
+                            {% for niveau in form.niveau.field.choices %}
+                                <option value="{{ niveau.0 }}">{{ niveau.1 }}</option>
+                            {% endfor %}
+                        </select>
+                        {{ form.niveau.errors }}
+                    </div>
+                    <div class="form-group select-wrapper">
+                        <label for="id_filiere">Field of Study:</label>
+                        <select id="id_filiere" name="filiere" class="form-control">
+                            <option value="">Select Field of Study</option>
+                            {% for filiere in form.filiere.field.choices %}
+                                <option value="{{ filiere.0 }}">{{ filiere.1 }}</option>
+                            {% endfor %}
+                        </select>
+                        {{ form.filiere.errors }}
+                    </div>
+                    <div class="form-group select-wrapper">
+                        <label for="id_semestre">Semester:</label>
+                        <select id="id_semestre" name="semestre" class="form-control">
+                            <option value="">Select Semester</option>
+                            {% for semestre in form.semestre.field.choices %}
+                                <option value="{{ semestre.0 }}">{{ semestre.1 }}</option>
+                            {% endfor %}
+                        </select>
+                        {{ form.semestre.errors }}
+                    </div>
+                    <button type="button" id="generateButton" class="btn btn-secondary mb-3" disabled>Generate Subjects</button>
+                    <div class="form-group select-wrapper">
+                        <label for="id_matiere">Subject:</label>
+                        <select id="id_matiere" name="matiere" class="form-control" disabled>
+                            <option value="">Select Subject</option>
+                        </select>
+                        {{ form.matiere.errors }}
+                    </div>
+                    <div class="form-group select-wrapper">
+                        <label for="id_matiere_commune">Common Subject (Optional):</label>
+                        <select id="id_matiere_commune" name="matiere_commune" class="form-control" disabled>
+                            <option value="">Select Common Subject</option>
+                        </select>
+                        {{ form.matiere_commune.errors }}
+                    </div>
+                    <button type="submit" class="btn btn-primary">Create Profile</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+{{ matiere_data|json_script:"matiere-data" }}
+{{ matiere_commune_data|json_script:"matiere-commune-data" }}
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        console.log('Script loaded');
+
+        // Parse JSON data from the template
+        let matiereData, matiereCommuneData;
+        try {
+            matiereData = JSON.parse(document.getElementById('matiere-data').textContent);
+            matiereCommuneData = JSON.parse(document.getElementById('matiere-commune-data').textContent);
+            console.log('matiereData:', matiereData);
+            console.log('matiereCommuneData:', matiereCommuneData);
+        } catch (e) {
+            console.error('Error parsing JSON data:', e);
+            return;
+        }
+
+        // Get references to elements
+        const filiereSelect = document.getElementById('id_filiere');
+        const semestreSelect = document.getElementById('id_semestre');
+        const niveauSelect = document.getElementById('id_niveau');
+        const anneeSelect = document.getElementById('id_annee');
+        const matiereSelect = document.getElementById('id_matiere');
+        const matiereCommuneSelect = document.getElementById('id_matiere_commune');
+        const generateButton = document.getElementById('generateButton');
+
+        // Check if all elements are found
+        if (!filiereSelect || !semestreSelect || !niveauSelect || !anneeSelect || !matiereSelect || !matiereCommuneSelect || !generateButton) {
+            console.error('One or more elements not found in the DOM');
+            return;
+        }
+
+        function updateMatiereOptions() {
+            console.log('Updating matiere options');
+            const filiereValue = filiereSelect.value;
+            const semestreValue = semestreSelect.value;
+            const niveauValue = niveauSelect.value;
+            console.log('Filiere:', filiereValue, 'Semestre:', semestreValue, 'Niveau:', niveauValue);
+
+            matiereSelect.innerHTML = '<option value="">Select Subject</option>';
+            matiereSelect.disabled = true;
+
+            if (filiereValue && semestreValue && niveauValue) {
+                const key = `${filiereValue}_${semestreValue}_${niveauValue}`;
+                console.log('Key:', key);
+                const options = matiereData[key] || [];
+                console.log('Matiere Options:', options);
+
+                if (options.length > 0) {
+                    options.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = option.id;
+                        opt.textContent = option.nom;
+                        matiereSelect.appendChild(opt);
+                    });
+                    matiereSelect.disabled = false;
+                } else {
+                    console.log('No matiere options available for this combination');
+                }
+            } else {
+                console.log('Missing values, cannot update matiere select');
+            }
+        }
+
+        function updateMatiereCommuneOptions() {
+            console.log('Updating matiere_commune options');
+            const filiereValue = filiereSelect.value;
+            const semestreValue = semestreSelect.value;
+            const niveauValue = niveauSelect.value;
+            console.log('Filiere:', filiereValue, 'Semestre:', semestreValue, 'Niveau:', niveauValue);
+
+            matiereCommuneSelect.innerHTML = '<option value="">Select Common Subject</option>';
+            matiereCommuneSelect.disabled = true;
+
+            if (filiereValue && semestreValue && niveauValue) {
+                const key = `${filiereValue}_${semestreValue}_${niveauValue}`;
+                console.log('Key:', key);
+                const options = matiereCommuneData[key] || [];
+                console.log('Matiere Commune Options:', options);
+
+                if (options.length > 0) {
+                    options.forEach(option => {
+                        const opt = document.createElement('option');
+                        opt.value = option.id;
+                        opt.textContent = option.nom;
+                        matiereCommuneSelect.appendChild(opt);
+                    });
+                    matiereCommuneSelect.disabled = false;
+                } else {
+                    console.log('No matiere_commune options available for this combination');
+                }
+            } else {
+                console.log('Missing values, cannot update matiere_commune select');
+            }
+        }
+
+        function checkGenerateButton() {
+            if (filiereSelect.value && semestreSelect.value && niveauSelect.value) {
+                generateButton.disabled = false;
+                generateButton.classList.remove('btn-secondary');
+                generateButton.classList.add('btn-primary');
+            } else {
+                generateButton.disabled = true;
+                generateButton.classList.remove('btn-primary');
+                generateButton.classList.add('btn-secondary');
+            }
+        }
+
+        // Add event listeners for changes to enable Generate button
+        filiereSelect.addEventListener('change', checkGenerateButton);
+        semestreSelect.addEventListener('change', checkGenerateButton);
+        niveauSelect.addEventListener('change', checkGenerateButton);
+        anneeSelect.addEventListener('change', checkGenerateButton);
+
+        // Add click event to Generate button
+        generateButton.addEventListener('click', function () {
+            console.log('Generate button clicked');
+            updateMatiereOptions();
+            updateMatiereCommuneOptions();
+        });
+
+        // Initially check the button state
+        checkGenerateButton();
+
+        // Log initial select options for debugging
+        console.log('Annee options:', Array.from(anneeSelect.options).map(opt => ({ value: opt.value, text: opt.textContent })));
+        console.log('Niveau options:', Array.from(niveauSelect.options).map(opt => ({ value: opt.value, text: opt.textContent })));
+        console.log('Filiere options:', Array.from(filiereSelect.options).map(opt => ({ value: opt.value, text: opt.textContent })));
+        console.log('Semestre options:', Array.from(semestreSelect.options).map(opt => ({ value: opt.value, text: opt.textContent })));
+    });
+</script>
+
+{% if form.errors %}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        var myModal = new bootstrap.Modal(document.getElementById('createProfileModal'));
+        myModal.show();
+    });
+</script>
+{% endif %}
+
 <!-- Lottie Player Library -->
 <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+<!-- Bootstrap JS (ensure dropdown functionality) -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}

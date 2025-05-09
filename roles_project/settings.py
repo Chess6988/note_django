@@ -181,8 +181,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'roles.User'
 
 user = settings.AUTH_USER_MODEL
-LOGIN_URL = 'roles:login'
-LOGOUT_REDIRECT_URL = 'roles:login'  # Optional
+LOGIN_URL = 'roles:signin'  # Updated to match existing URL pattern
+LOGOUT_REDIRECT_URL = 'roles:signin'  # Redirect to signin page after logout
 AUTHENTICATION_BACKENDS = ['django.contrib.auth.backends.ModelBackend']
 
 
