@@ -42,6 +42,9 @@
     .form-group {
         margin-bottom: 1.5rem;
     }
+    .alert {
+        margin-top: 1rem;
+    }
 </style>
 
 <div class="container dashboard-container">
@@ -85,14 +88,17 @@
             </div>
             <div class="modal-body">
                 <p>Please select your academic details to enable subject selections.</p>
+                {% if matiere_unavailable_message %}
+                    <div class="alert alert-info">{{ matiere_unavailable_message }}</div>
+                {% endif %}
                 <form method="post" action="{% url 'roles:home_etudiant' %}">
                     {% csrf_token %}
                     <div class="form-group select-wrapper">
                         <label for="id_annee">Academic Year:</label>
                         <select id="id_annee" name="annee" class="form-control">
                             <option value="">Select Academic Year</option>
-                            {% for annee in form.annee.field.choices %}
-                                <option value="{{ annee.0 }}">{{ annee.1 }}</option>
+                            {% for annee in annee_choices %}
+                                <option value="{{ annee.id }}">{{ annee }}</option>
                             {% endfor %}
                         </select>
                         {{ form.annee.errors }}
@@ -101,8 +107,8 @@
                         <label for="id_niveau">Level:</label>
                         <select id="id_niveau" name="niveau" class="form-control">
                             <option value="">Select Level</option>
-                            {% for niveau in form.niveau.field.choices %}
-                                <option value="{{ niveau.0 }}">{{ niveau.1 }}</option>
+                            {% for niveau in niveau_choices %}
+                                <option value="{{ niveau.id }}">{{ niveau }}</option>
                             {% endfor %}
                         </select>
                         {{ form.niveau.errors }}
@@ -111,8 +117,8 @@
                         <label for="id_filiere">Field of Study:</label>
                         <select id="id_filiere" name="filiere" class="form-control">
                             <option value="">Select Field of Study</option>
-                            {% for filiere in form.filiere.field.choices %}
-                                <option value="{{ filiere.0 }}">{{ filiere.1 }}</option>
+                            {% for filiere in filiere_choices %}
+                                <option value="{{ filiere.id }}">{{ filiere }}</option>
                             {% endfor %}
                         </select>
                         {{ form.filiere.errors }}
@@ -121,8 +127,8 @@
                         <label for="id_semestre">Semester:</label>
                         <select id="id_semestre" name="semestre" class="form-control">
                             <option value="">Select Semester</option>
-                            {% for semestre in form.semestre.field.choices %}
-                                <option value="{{ semestre.0 }}">{{ semestre.1 }}</option>
+                            {% for semestre in semestre_choices %}
+                                <option value="{{ semestre.id }}">{{ semestre }}</option>
                             {% endfor %}
                         </select>
                         {{ form.semestre.errors }}
@@ -209,6 +215,15 @@
                     matiereSelect.disabled = false;
                 } else {
                     console.log('No matiere options available for this combination');
+                    // Display a message in the UI
+                    const form = matiereSelect.closest('form');
+                    let alert = form.querySelector('.alert-matiere');
+                    if (!alert) {
+                        alert = document.createElement('div');
+                        alert.className = 'alert alert-warning alert-matiere';
+                        alert.textContent = 'No subjects available for this combination.';
+                        matiereSelect.parentElement.appendChild(alert);
+                    }
                 }
             } else {
                 console.log('Missing values, cannot update matiere select');
@@ -241,6 +256,15 @@
                     matiereCommuneSelect.disabled = false;
                 } else {
                     console.log('No matiere_commune options available for this combination');
+                    // Display a message in the UI
+                    const form = matiereCommuneSelect.closest('form');
+                    let alert = form.querySelector('.alert-matiere-commune');
+                    if (!alert) {
+                        alert = document.createElement('div');
+                        alert.className = 'alert alert-warning alert-matiere-commune';
+                        alert.textContent = 'No common subjects available for this combination.';
+                        matiereCommuneSelect.parentElement.appendChild(alert);
+                    }
                 }
             } else {
                 console.log('Missing values, cannot update matiere_commune select');
@@ -268,6 +292,9 @@
         // Add click event to Generate button
         generateButton.addEventListener('click', function () {
             console.log('Generate button clicked');
+            // Clear any existing alert messages
+            const existingAlerts = document.querySelectorAll('.alert-matiere, .alert-matiere-commune');
+            existingAlerts.forEach(alert => alert.remove());
             updateMatiereOptions();
             updateMatiereCommuneOptions();
         });
