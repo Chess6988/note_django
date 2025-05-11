@@ -113,9 +113,13 @@ class Annee(models.Model):
     def get_current_academic_year(cls):
         """Get or create the Annee instance for the current academic year."""
         current_year_str = cls.get_current_academic_year_str()
-        # Get or create the Annee object; returns (instance, created) tuple
         annee_instance, _ = cls.objects.get_or_create(annee=current_year_str)
         return annee_instance
+
+    @classmethod
+    def get_current_academic_year_id(cls):
+        """Return the ID of the current academic year."""
+        return cls.get_current_academic_year().id
 
 class Niveau(models.Model):
     nom_niveau = models.CharField(max_length=50)
@@ -220,9 +224,23 @@ class EnseignantAnnee(models.Model):
         db_table = 'enseignants_annees'
         unique_together = ('enseignant', 'annee')
 
+def get_default_annee():
+    """Callable to return the current Annee instance for migrations."""
+    from django.utils import timezone  # Import here to avoid circular imports
+    current_year_str = Annee.get_current_academic_year_str()
+    annee_instance, _ = Annee.objects.get_or_create(annee=current_year_str)
+    return annee_instance
+
 class EtudiantAnnee(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    annee = models.ForeignKey(
+        Annee,
+        on_delete=models.CASCADE,
+        null=False,
+        blank=False,
+        db_column='id_annee',
+        default=get_default_annee  # Use callable to ensure instance is created
+    )
     
     class Meta:
         db_table = 'etudiants_annees'
@@ -258,15 +276,27 @@ class ProfileEnseignant(models.Model):
     class Meta:
         db_table = 'profile_enseignant'
 
+def get_default_annee():
+    current_year_str = Annee.get_current_academic_year_str()
+    annee_instance, _ = Annee.objects.get_or_create(annee=current_year_str)
+    return annee_instance.id  # Return the ID, not the instance
+
 class ProfileEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
     matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
     semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
-    annee = models.ForeignKey(Annee, on_delete=models.CASCADE, null=True, blank=True, db_column='id_annee')
+    annee = models.ForeignKey(
+    Annee,
+    on_delete=models.CASCADE,
+    null=False,
+    blank=False,
+    db_column='id_annee',  # If applicable
+    default=get_default_annee  # Ensure this function exists and works
+)
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
     matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')
-    
+
     class Meta:
         db_table = 'profile_etudiant'
         unique_together = ('etudiant', 'annee')

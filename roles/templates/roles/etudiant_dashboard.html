@@ -215,7 +215,6 @@
                     matiereSelect.disabled = false;
                 } else {
                     console.log('No matiere options available for this combination');
-                    // Display a message in the UI
                     const form = matiereSelect.closest('form');
                     let alert = form.querySelector('.alert-matiere');
                     if (!alert) {
@@ -241,9 +240,11 @@
             matiereCommuneSelect.disabled = true;
 
             if (filiereValue && semestreValue && niveauValue) {
+                // Try both filiere-specific and None keys for matiere_commune
                 const key = `${filiereValue}_${semestreValue}_${niveauValue}`;
-                console.log('Key:', key);
-                const options = matiereCommuneData[key] || [];
+                const noneKey = `None_${semestreValue}_${niveauValue}`;
+                console.log('Key:', key, 'None Key:', noneKey);
+                const options = matiereCommuneData[key] || matiereCommuneData[noneKey] || [];
                 console.log('Matiere Commune Options:', options);
 
                 if (options.length > 0) {
@@ -256,7 +257,6 @@
                     matiereCommuneSelect.disabled = false;
                 } else {
                     console.log('No matiere_commune options available for this combination');
-                    // Display a message in the UI
                     const form = matiereCommuneSelect.closest('form');
                     let alert = form.querySelector('.alert-matiere-commune');
                     if (!alert) {
