@@ -14,13 +14,12 @@ from .models import (
 User = get_user_model()
 
 # Helper function to create a user
-def create_user(username, email, role, password='testpass123', phone_number='1234567890'):
+def create_user(username, email, role, password='testpass123'):
     return User.objects.create_user(
         username=username,
         email=email,
         password=password,
-        role=role,
-        phone_number=phone_number
+        role=role
     )
 
 # Tests for User Model
@@ -31,22 +30,11 @@ class TestUserModel:
         assert user.username == 'testuser'
         assert user.email == 'test@example.com'
         assert user.role == 'etudiant'
-        assert user.phone_number == '1234567890'
 
     def test_email_must_be_unique(self):
         create_user('user1', 'unique@example.com', 'etudiant')
         with pytest.raises(IntegrityError):
             create_user('user2', 'unique@example.com', 'etudiant')
-
-    def test_phone_number_only_digits(self):
-        user = User(username='testphone', email='phone@example.com', phone_number='abc123', role='etudiant')
-        with pytest.raises(ValidationError):
-            user.full_clean()
-
-    def test_phone_number_max_length(self):
-        user = User(username='testmax', email='max@example.com', phone_number='1' * 16, role='etudiant')
-        with pytest.raises(ValidationError):
-            user.full_clean()
 
     def test_invalid_role_raises_error(self):
         user = User(username='invalidrole', email='invalid@example.com', role='invalid')
