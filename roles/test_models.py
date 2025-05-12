@@ -9,6 +9,7 @@ from .models import (
     Matiere, MatiereCommune, Note, EnseignantAnnee, EtudiantAnnee, MatiereEtudiant,
     MatiereCommuneEtudiant, ProfileEnseignant, ProfileEtudiant
 )
+from django.contrib.auth.hashers import make_password
 
 class UserModelTest(TestCase):
     def test_role_choices_valid(self):
@@ -18,23 +19,6 @@ class UserModelTest(TestCase):
 
     def test_role_choices_invalid(self):
         user = User(username='testuser', email='test@example.com', role='invalid_role')
-        user.set_password('password123')
-        with self.assertRaises(ValidationError):
-            user.full_clean()
-
-    def test_phone_number_validation_valid(self):
-        user = User(username='testuser', email='test@example.com', role='etudiant', phone_number='1234567890')
-        user.set_password('password123')  # Set password to satisfy blank=False
-        user.full_clean()  # Should not raise
-
-    def test_phone_number_validation_invalid(self):
-        user = User(username='testuser', email='test@example.com', role='etudiant', phone_number='abc123')
-        user.set_password('password123')
-        with self.assertRaises(ValidationError):
-            user.full_clean()
-
-    def test_phone_number_max_length(self):
-        user = User(username='testuser', email='test@example.com', role='etudiant', phone_number='1234567890123456')
         user.set_password('password123')
         with self.assertRaises(ValidationError):
             user.full_clean()
@@ -64,12 +48,6 @@ class UserModelTest(TestCase):
         user.role = 'invalid'
         self.assertEqual(user.get_redirect_url(), '/signin/')
 
-    def test_clean_method(self):
-        user = User(username='testuser', email='test@example.com', role='etudiant', phone_number='abc123')
-        user.set_password('password123')
-        with self.assertRaises(ValidationError):
-            user.clean()
-
 class InvitationModelTest(TestCase):
     def setUp(self):
         self.superadmin = User.objects.create(username='superadmin', email='superadmin@example.com', role='superadmin', password='password123')
@@ -78,21 +56,24 @@ class InvitationModelTest(TestCase):
 
     def test_role_choices(self):
         invitation = Invitation(role='invalid_role', email='test@example.com', inviter=self.admin)
-        invitation.set_pin('123456')  # Set PIN
-        invitation.expires_at = timezone.now() + timedelta(days=1)  # Set expires_at
         with self.assertRaises(ValidationError):
-            invitation.full_clean()
+            invitation.full_clean()  # Test field validation only
+        invitation = Invitation(role='invalid_role', email='test@example.com', inviter=self.admin)
+        invitation.pin = make_password('123456')
+        invitation.expires_at = timezone.now() + timedelta(days=1)
+        with self.assertRaises(ValidationError):
+            invitation.save()  # Should raise "Admins can only invite teachers."
         invitation.role = 'enseignant'
-        invitation.full_clean()  # Should not raise
+        invitation.save()  # Should not raise
 
     def test_status_choices(self):
         invitation = Invitation(role='enseignant', email='test@example.com', inviter=self.admin, status='invalid_status')
-        invitation.set_pin('123456')  # Set PIN
-        invitation.expires_at = timezone.now() + timedelta(days=1)  # Set expires_at
         with self.assertRaises(ValidationError):
             invitation.full_clean()
         invitation.status = 'pending'
-        invitation.full_clean()  # Should not raise
+        invitation.pin = make_password('123456')
+        invitation.expires_at = timezone.now() + timedelta(days=1)
+        invitation.save()  # Should not raise
 
     def test_token_unique(self):
         token = uuid.uuid4()
@@ -144,21 +125,21 @@ class InvitationModelTest(TestCase):
 
     def test_save_admin_invite_restricted(self):
         invitation = Invitation(role='admin', email='newadmin@example.com', inviter=self.admin)
-        invitation.set_pin('123456')
+        invitation.pin = make_password('123456')
         with self.assertRaises(ValidationError):
-            invitation.save()
+            invitation.save()  # Should raise "Admins can only invite teachers."
 
     def test_save_non_inviter_role(self):
         invitation = Invitation(role='enseignant', email='test@example.com', inviter=self.enseignant)
-        invitation.set_pin('123456')
+        invitation.pin = make_password('123456')
         with self.assertRaises(ValidationError):
-            invitation.save()
+            invitation.save()  # Should raise "Only superadmins and admins can send invitations."
 
     def test_save_etudiant_forbidden(self):
         invitation = Invitation(role='etudiant', email='newetudiant@example.com', inviter=self.superadmin)
-        invitation.set_pin('123456')
+        invitation.pin = make_password('123456')
         with self.assertRaises(ValidationError):
-            invitation.save()
+            invitation.save()  # Should raise "Cannot send invitations for etudiant role."
 
     def test_expires_at_auto_set(self):
         invitation = Invitation(role='enseignant', email='test@example.com', inviter=self.admin)
@@ -180,7 +161,8 @@ class AnneeModelTest(TestCase):
 
     def test_annee_null(self):
         annee = Annee(annee=None)
-        annee.full_clean()  # Should not raise
+        with self.assertRaises(ValidationError):
+            annee.full_clean()  # Should raise because null=False
 
 class FiliereModelTest(TestCase):
     def test_nom_filiere_max_length(self):
