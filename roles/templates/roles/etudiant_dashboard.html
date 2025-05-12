@@ -2,6 +2,9 @@
 {% block title %}Etudiant Dashboard{% endblock %}
 
 {% block content %}
+<!-- Include Bootstrap Icons CSS -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+
 <style>
     .dashboard-container {
         animation: fadeInUp 0.8s ease-out;
@@ -23,26 +26,109 @@
         background-color: #ffffff;
         padding: 2rem;
     }
-    .select-wrapper {
-        position: relative;
+    .alert {
+        margin-top: 1rem;
     }
-    .select-wrapper select {
-        padding-right: 30px;
-        appearance: none;
+    /* Enhanced UI Styles for Modal */
+    .modal-content {
+        border-radius: 1rem;
+        box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
     }
-    .select-wrapper::after {
-        content: '\25BC'; /* Chevron down icon */
-        position: absolute;
-        right: 10px;
-        top: 50%;
-        transform: translateY(-50%);
-        pointer-events: none;
-        color: #495057;
+    .modal-header {
+        border-bottom: none;
+    }
+    .modal-title {
+        font-weight: bold;
     }
     .form-group {
         margin-bottom: 1.5rem;
     }
-    .alert {
+    .form-group label {
+        font-weight: 500;
+        color: #495057;
+    }
+    .form-select {
+        border-radius: 0.5rem;
+        border: 1px solid #ced4da;
+        padding: 0.75rem;
+    }
+    .btn-primary {
+        background-color: #007bff;
+        border: none;
+        border-radius: 0.5rem;
+    }
+    .btn-primary:hover {
+        background-color: #0056b3;
+    }
+    .btn-secondary {
+        background-color: #6c757d;
+        border: none;
+        border-radius: 0.5rem;
+    }
+    .btn-secondary:hover {
+        background-color: #5a6268;
+    }
+    ol {
+        padding-left: 1.5rem;
+    }
+    li {
+        margin-bottom: 0.5rem;
+    }
+    /* Progress Bar Styles */
+    .progress-container {
+        margin-bottom: 2rem;
+    }
+    .progress-steps {
+        display: flex;
+        justify-content: space-between;
+        position: relative;
+    }
+    .progress-step {
+        flex: 1;
+        text-align: center;
+        padding: 0.5rem;
+        background-color: #e9ecef;
+        color: #6c757d;
+        font-size: 0.9rem;
+        border-radius: 0.25rem;
+        z-index: 1;
+    }
+    .progress-step.active {
+        background-color: #007bff;
+        color: #fff;
+    }
+    .progress-step.completed {
+        background-color: #28a745;
+        color: #fff;
+    }
+    .progress-bar-bg {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        right: 0;
+        height: 4px;
+        background-color: #e9ecef;
+        z-index: 0;
+    }
+    .progress-bar-fill {
+        position: absolute;
+        top: 50%;
+        left: 0;
+        height: 4px;
+        background-color: #007bff;
+        transition: width 0.3s ease;
+        z-index: 0;
+    }
+    /* Step Container */
+    .step {
+        display: none;
+    }
+    .step.active {
+        display: block;
+    }
+    .step-actions {
+        display: flex;
+        justify-content: space-between;
         margin-top: 1rem;
     }
 </style>
@@ -87,68 +173,110 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <p>Please select your academic details to enable subject selections.</p>
+                <!-- Progress Bar -->
+                <div class="progress-container">
+                    <div class="progress-steps">
+                        <div class="progress-step active" data-step="1">1. Year & Level</div>
+                        <div class="progress-step" data-step="2">2. Field & Semester</div>
+                        <div class="progress-step" data-step="3">3. Subjects</div>
+                    </div>
+                    <div class="progress-bar-bg"></div>
+                    <div class="progress-bar-fill" style="width: 0%;"></div>
+                </div>
+
+                <!-- Updated Pop-up Message with Detailed Instructions -->
+                <p class="mb-4">To create your profile, follow these steps:</p>
+                <ol>
+                    <li>Select your Academic Year and Level.</li>
+                    <li>Select your Field of Study and Semester.</li>
+                    <li>Generate and choose your Subjects, then create your profile.</li>
+                </ol>
+
+                <br>
+                
                 {% if matiere_unavailable_message %}
                     <div class="alert alert-info">{{ matiere_unavailable_message }}</div>
                 {% endif %}
-                <form method="post" action="{% url 'roles:home_etudiant' %}">
+
+                <form method="post" action="{% url 'roles:home_etudiant' %}" id="profileForm">
                     {% csrf_token %}
-                    <div class="form-group select-wrapper">
-                        <label for="id_annee">Academic Year:</label>
-                        <select id="id_annee" name="annee" class="form-control">
-                            <option value="">Select Academic Year</option>
-                            {% for annee in annee_choices %}
-                                <option value="{{ annee.id }}">{{ annee }}</option>
-                            {% endfor %}
-                        </select>
-                        {{ form.annee.errors }}
+                    <!-- Step 1: Academic Year & Level -->
+                    <div class="step active" id="step1">
+                        <div class="form-group">
+                            <label for="id_annee"><i class="bi bi-calendar me-2"></i>Academic Year:</label>
+                            <select id="id_annee" name="annee" class="form-select">
+                                <option value="">Select Academic Year</option>
+                                {% for annee in annee_choices %}
+                                    <option value="{{ annee.id }}">{{ annee }}</option>
+                                {% endfor %}
+                            </select>
+                            {{ form.annee.errors }}
+                        </div>
+                        <div class="form-group">
+                            <label for="id_niveau"><i class="bi bi-mortarboard me-2"></i>Level:</label>
+                            <select id="id_niveau" name="niveau" class="form-select">
+                                <option value="">Select Level</option>
+                                {% for niveau in niveau_choices %}
+                                    <option value="{{ niveau.id }}">{{ niveau }}</option>
+                                {% endfor %}
+                            </select>
+                            {{ form.niveau.errors }}
+                        </div>
+                        <div class="step-actions">
+                            <button type="button" class="btn btn-primary next-step" data-next="2">Next</button>
+                        </div>
                     </div>
-                    <div class="form-group select-wrapper">
-                        <label for="id_niveau">Level:</label>
-                        <select id="id_niveau" name="niveau" class="form-control">
-                            <option value="">Select Level</option>
-                            {% for niveau in niveau_choices %}
-                                <option value="{{ niveau.id }}">{{ niveau }}</option>
-                            {% endfor %}
-                        </select>
-                        {{ form.niveau.errors }}
+
+                    <!-- Step 2: Field of Study & Semester -->
+                    <div class="step" id="step2">
+                        <div class="form-group">
+                            <label for="id_filiere"><i class="bi bi-briefcase me-2"></i>Field of Study:</label>
+                            <select id="id_filiere" name="filiere" class="form-select">
+                                <option value="">Select Field of Study</option>
+                                {% for filiere in filiere_choices %}
+                                    <option value="{{ filiere.id }}">{{ filiere }}</option>
+                                {% endfor %}
+                            </select>
+                            {{ form.filiere.errors }}
+                        </div>
+                        <div class="form-group">
+                            <label for="id_semestre"><i class="bi bi-clock me-2"></i>Semester:</label>
+                            <select id="id_semestre" name="semestre" class="form-select">
+                                <option value="">Select Semester</option>
+                                {% for semestre in semestre_choices %}
+                                    <option value="{{ semestre.id }}">{{ semestre }}</option>
+                                {% endfor %}
+                            </select>
+                            {{ form.semestre.errors }}
+                        </div>
+                        <div class="step-actions">
+                            <button type="button" class="btn btn-secondary prev-step" data-prev="1">Previous</button>
+                            <button type="button" class="btn btn-primary next-step" data-next="3">Next</button>
+                        </div>
                     </div>
-                    <div class="form-group select-wrapper">
-                        <label for="id_filiere">Field of Study:</label>
-                        <select id="id_filiere" name="filiere" class="form-control">
-                            <option value="">Select Field of Study</option>
-                            {% for filiere in filiere_choices %}
-                                <option value="{{ filiere.id }}">{{ filiere }}</option>
-                            {% endfor %}
-                        </select>
-                        {{ form.filiere.errors }}
+
+                    <!-- Step 3: Subjects -->
+                    <div class="step" id="step3">
+                        <button type="button" id="generateButton" class="btn btn-secondary mb-3" disabled><i class="bi bi-arrow-clockwise me-2"></i>Generate Subjects</button>
+                        <div class="form-group">
+                            <label for="id_matiere"><i class="bi bi-book me-2"></i>Subject:</label>
+                            <select id="id_matiere" name="matiere" class="form-select" disabled>
+                                <option value="">Select Subject</option>
+                            </select>
+                            {{ form.matiere.errors }}
+                        </div>
+                        <div class="form-group">
+                            <label for="id_matiere_commune"><i class="bi bi-collection me-2"></i>Common Subject (Optional):</label>
+                            <select id="id_matiere_commune" name="matiere_commune" class="form-select" disabled>
+                                <option value="">Select Common Subject</option>
+                            </select>
+                            {{ form.matiere_commune.errors }}
+                        </div>
+                        <div class="step-actions">
+                            <button type="button" class="btn btn-secondary prev-step" data-prev="2">Previous</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-person-plus me-2"></i>Create Profile</button>
+                        </div>
                     </div>
-                    <div class="form-group select-wrapper">
-                        <label for="id_semestre">Semester:</label>
-                        <select id="id_semestre" name="semestre" class="form-control">
-                            <option value="">Select Semester</option>
-                            {% for semestre in semestre_choices %}
-                                <option value="{{ semestre.id }}">{{ semestre }}</option>
-                            {% endfor %}
-                        </select>
-                        {{ form.semestre.errors }}
-                    </div>
-                    <button type="button" id="generateButton" class="btn btn-secondary mb-3" disabled>Generate Subjects</button>
-                    <div class="form-group select-wrapper">
-                        <label for="id_matiere">Subject:</label>
-                        <select id="id_matiere" name="matiere" class="form-control" disabled>
-                            <option value="">Select Subject</option>
-                        </select>
-                        {{ form.matiere.errors }}
-                    </div>
-                    <div class="form-group select-wrapper">
-                        <label for="id_matiere_commune">Common Subject (Optional):</label>
-                        <select id="id_matiere_commune" name="matiere_commune" class="form-control" disabled>
-                            <option value="">Select Common Subject</option>
-                        </select>
-                        {{ form.matiere_commune.errors }}
-                    </div>
-                    <button type="submit" class="btn btn-primary">Create Profile</button>
                 </form>
             </div>
         </div>
@@ -182,13 +310,76 @@
         const matiereSelect = document.getElementById('id_matiere');
         const matiereCommuneSelect = document.getElementById('id_matiere_commune');
         const generateButton = document.getElementById('generateButton');
+        const form = document.getElementById('profileForm');
+        const progressBarFill = document.querySelector('.progress-bar-fill');
+        const progressSteps = document.querySelectorAll('.progress-step');
+        const steps = document.querySelectorAll('.step');
+        const nextButtons = document.querySelectorAll('.next-step');
+        const prevButtons = document.querySelectorAll('.prev-step');
 
         // Check if all elements are found
-        if (!filiereSelect || !semestreSelect || !niveauSelect || !anneeSelect || !matiereSelect || !matiereCommuneSelect || !generateButton) {
+        if (!filiereSelect || !semestreSelect || !niveauSelect || !anneeSelect || !matiereSelect || !matiereCommuneSelect || !generateButton || !form) {
             console.error('One or more elements not found in the DOM');
             return;
         }
 
+        // Multi-step form logic
+        let currentStep = 1;
+
+        function updateStep(stepNumber) {
+            // Update step visibility
+            steps.forEach(step => step.classList.remove('active'));
+            document.getElementById(`step${stepNumber}`).classList.add('active');
+
+            // Update progress bar
+            progressSteps.forEach(step => {
+                step.classList.remove('active', 'completed');
+                const stepNum = parseInt(step.dataset.step);
+                if (stepNum < stepNumber) {
+                    step.classList.add('completed');
+                } else if (stepNum === stepNumber) {
+                    step.classList.add('active');
+                }
+            });
+
+            // Update progress bar width (0% for step 1, 50% for step 2, 100% for step 3)
+            const progressWidth = ((stepNumber - 1) / 2) * 100;
+            progressBarFill.style.width = `${progressWidth}%`;
+
+            currentStep = stepNumber;
+        }
+
+        // Validate step inputs
+        function validateStep(stepNumber) {
+            if (stepNumber === 1) {
+                return anneeSelect.value && niveauSelect.value;
+            } else if (stepNumber === 2) {
+                return filiereSelect.value && semestreSelect.value;
+            }
+            return true; // Step 3 has no mandatory validation
+        }
+
+        // Next button event listeners
+        nextButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                const nextStep = parseInt(this.dataset.next);
+                if (validateStep(currentStep)) {
+                    updateStep(nextStep);
+                } else {
+                    alert('Please complete all fields before proceeding.');
+                }
+            });
+        });
+
+        // Previous button event listeners
+        prevButtons.forEach(button => {
+            button.addEventListener('click', function () {
+                const prevStep = parseInt(this.dataset.prev);
+                updateStep(prevStep);
+            });
+        });
+
+        // Update matiere options
         function updateMatiereOptions() {
             console.log('Updating matiere options');
             const filiereValue = filiereSelect.value;
@@ -229,6 +420,7 @@
             }
         }
 
+        // Update matiere commune options
         function updateMatiereCommuneOptions() {
             console.log('Updating matiere_commune options');
             const filiereValue = filiereSelect.value;
@@ -240,7 +432,6 @@
             matiereCommuneSelect.disabled = true;
 
             if (filiereValue && semestreValue && niveauValue) {
-                // Try both filiere-specific and None keys for matiere_commune
                 const key = `${filiereValue}_${semestreValue}_${niveauValue}`;
                 const noneKey = `None_${semestreValue}_${niveauValue}`;
                 console.log('Key:', key, 'None Key:', noneKey);
@@ -271,6 +462,7 @@
             }
         }
 
+        // Check if Generate Subjects button should be enabled
         function checkGenerateButton() {
             if (filiereSelect.value && semestreSelect.value && niveauSelect.value) {
                 generateButton.disabled = false;
@@ -297,6 +489,8 @@
             existingAlerts.forEach(alert => alert.remove());
             updateMatiereOptions();
             updateMatiereCommuneOptions();
+            // Update progress bar to show completion of subject generation
+            progressSteps[2].classList.add('active');
         });
 
         // Initially check the button state
