@@ -191,6 +191,10 @@ class StudentProfileForm(forms.ModelForm):
             self.fields['matiere_commune'].queryset = MatiereCommune.objects.none()
             self.fields['matiere'].required = False
 
+
+
+
+# Forms for User Registration and Activation
 class DefaultSignUpForm(UserCreationForm):
     class Meta:
         model = User

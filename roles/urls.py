@@ -17,7 +17,6 @@ urlpatterns = [
     path('admin/panel/', views.admin_panel, name='admin_panel'),
     path('superadmin/panel/', views.superadmin_panel, name='superadmin_panel'),
     path('logout/', views.logout_view, name='logout'),
-    path('create_profile/', views.create_profile, name='create_profile'),
-    path('home_etudiant/', views.home_etudiant, name='home_etudiant'),
+
 ]
 

@@ -40,6 +40,9 @@
     .modal-title {
         font-weight: bold;
     }
+    .modal-body {
+        padding: 2rem;
+    }
     .form-group {
         margin-bottom: 1.5rem;
     }
@@ -77,47 +80,64 @@
     /* Progress Bar Styles */
     .progress-container {
         margin-bottom: 2rem;
+        position: relative;
     }
     .progress-steps {
         display: flex;
         justify-content: space-between;
-        position: relative;
+        align-items: center;
     }
     .progress-step {
-        flex: 1;
-        text-align: center;
-        padding: 0.5rem;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        position: relative;
+    }
+    .step-number {
+        width: 30px;
+        height: 30px;
+        border-radius: 50%;
         background-color: #e9ecef;
         color: #6c757d;
-        font-size: 0.9rem;
-        border-radius: 0.25rem;
-        z-index: 1;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        font-weight: bold;
+        transition: background-color 0.3s ease;
     }
-    .progress-step.active {
+    .step-label {
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #6c757d;
+    }
+    .progress-step.active .step-number {
         background-color: #007bff;
         color: #fff;
     }
-    .progress-step.completed {
+    .progress-step.completed .step-number {
         background-color: #28a745;
         color: #fff;
     }
-    .progress-bar-bg {
-        position: absolute;
-        top: 50%;
-        left: 0;
-        right: 0;
-        height: 4px;
-        background-color: #e9ecef;
-        z-index: 0;
+    .progress-step.active .step-label {
+        color: #007bff;
+        font-weight: bold;
     }
-    .progress-bar-fill {
+    .progress-step.completed .step-label {
+        color: #28a745;
+    }
+    /* Lines connecting the steps */
+    .progress-step:not(:last-child):after {
+        content: '';
         position: absolute;
-        top: 50%;
-        left: 0;
-        height: 4px;
-        background-color: #007bff;
-        transition: width 0.3s ease;
-        z-index: 0;
+        top: 15px;
+        left: 50%;
+        width: 100%;
+        height: 2px;
+        background-color: #e9ecef;
+        z-index: -1;
+    }
+    .progress-step.completed:not(:last-child):after {
+        background-color: #28a745;
     }
     /* Step Container */
     .step {
@@ -130,6 +150,17 @@
         display: flex;
         justify-content: space-between;
         margin-top: 1rem;
+    }
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+        .step-label {
+            font-size: 0.8rem;
+        }
+        .step-number {
+            width: 25px;
+            height: 25px;
+            font-size: 0.8rem;
+        }
     }
 </style>
 
@@ -148,7 +179,7 @@
                     </div>
 
                     <button type="button" class="btn btn-primary mb-3" data-bs-toggle="modal" data-bs-target="#createProfileModal">
-                        Create Profile
+                        Formulaire de creation de profile
                     </button>
 
                     <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
@@ -173,15 +204,22 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
             </div>
             <div class="modal-body">
-                <!-- Progress Bar -->
+                <!-- Progress Steps -->
                 <div class="progress-container">
                     <div class="progress-steps">
-                        <div class="progress-step active" data-step="1">1. Year & Level</div>
-                        <div class="progress-step" data-step="2">2. Field & Semester</div>
-                        <div class="progress-step" data-step="3">3. Subjects</div>
+                        <div class="progress-step active" data-step="1">
+                            <span class="step-number">1</span>
+                            <span class="step-label">Year & Level</span>
+                        </div>
+                        <div class="progress-step" data-step="2">
+                            <span class="step-number">2</span>
+                            <span class="step-label">Field & Semester</span>
+                        </div>
+                        <div class="progress-step" data-step="3">
+                            <span class="step-number">3</span>
+                            <span class="step-label">Subjects</span>
+                        </div>
                     </div>
-                    <div class="progress-bar-bg"></div>
-                    <div class="progress-bar-fill" style="width: 0%;"></div>
                 </div>
 
                 <!-- Updated Pop-up Message with Detailed Instructions -->
@@ -198,7 +236,7 @@
                     <div class="alert alert-info">{{ matiere_unavailable_message }}</div>
                 {% endif %}
 
-                <form method="post" action="{% url 'roles:home_etudiant' %}" id="profileForm">
+                <form method="post" action="{% url 'roles:etudiant_dashboard' %}" id="profileForm">
                     {% csrf_token %}
                     <!-- Step 1: Academic Year & Level -->
                     <div class="step active" id="step1">
@@ -274,7 +312,7 @@
                         </div>
                         <div class="step-actions">
                             <button type="button" class="btn btn-secondary prev-step" data-prev="2">Previous</button>
-                            <button type="submit" class="btn btn-primary"><i class="bi bi-person-plus me-2"></i>Create Profile</button>
+                            <button type="submit" class="btn btn-primary"><i class="bi bi-person-plus me-2"></i>Generer</button>
                         </div>
                     </div>
                 </form>
@@ -311,7 +349,6 @@
         const matiereCommuneSelect = document.getElementById('id_matiere_commune');
         const generateButton = document.getElementById('generateButton');
         const form = document.getElementById('profileForm');
-        const progressBarFill = document.querySelector('.progress-bar-fill');
         const progressSteps = document.querySelectorAll('.progress-step');
         const steps = document.querySelectorAll('.step');
         const nextButtons = document.querySelectorAll('.next-step');
@@ -331,7 +368,7 @@
             steps.forEach(step => step.classList.remove('active'));
             document.getElementById(`step${stepNumber}`).classList.add('active');
 
-            // Update progress bar
+            // Update progress steps
             progressSteps.forEach(step => {
                 step.classList.remove('active', 'completed');
                 const stepNum = parseInt(step.dataset.step);
@@ -341,10 +378,6 @@
                     step.classList.add('active');
                 }
             });
-
-            // Update progress bar width (0% for step 1, 50% for step 2, 100% for step 3)
-            const progressWidth = ((stepNumber - 1) / 2) * 100;
-            progressBarFill.style.width = `${progressWidth}%`;
 
             currentStep = stepNumber;
         }
@@ -489,7 +522,7 @@
             existingAlerts.forEach(alert => alert.remove());
             updateMatiereOptions();
             updateMatiereCommuneOptions();
-            // Update progress bar to show completion of subject generation
+            // Update progress step to show completion of subject generation
             progressSteps[2].classList.add('active');
         });
 

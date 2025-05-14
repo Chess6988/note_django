@@ -258,118 +258,6 @@ def signin(request):
 
 # Etudiant creating his profile
 
-@login_required
-def create_profile(request):
-    """Handle student profile creation."""
-    if request.method == 'POST':
-        form = StudentProfileForm(request.POST)
-        if form.is_valid():
-            profile = form.save(commit=False)
-            profile.etudiant = request.user.etudiant_profile
-            profile.save()
-            logger.info(f"Profile created for user {request.user.username}")
-            return redirect('roles:home_etudiant')
-        else:
-            logger.debug(f"Form errors: {form.errors}")
-            messages.error(request, 'Please correct the errors below.')
-    else:
-        current_annee = Annee.get_current_academic_year()
-        form = StudentProfileForm(initial={'annee': current_annee.id})
-
-    # Prepare data for dynamic filtering
-    all_matieres = Matiere.objects.all().values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
-    matiere_data = {}
-    for m in all_matieres:
-        key = f"{m['filiere_id']}_{m['semestre_id']}_{m['niveau_id']}"
-        if key not in matiere_data:
-            matiere_data[key] = []
-        matiere_data[key].append({'id': m['id'], 'nom': m['nom_matiere']})
-
-    all_matieres_communes = MatiereCommune.objects.all().values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
-    matiere_commune_data = {}
-    for mc in all_matieres_communes:
-        key = f"{mc['filiere_id']}_{mc['semestre_id']}_{mc['niveau_id']}"
-        if key not in matiere_commune_data:
-            matiere_commune_data[key] = []
-        matiere_commune_data[key].append({'id': mc['id'], 'nom': mc['nom_matiere_commune']})
-
-    context = {
-        'form': form,
-        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
-        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
-        'messages': messages.get_messages(request)
-    }
-    logger.debug(f"Rendering create_profile.html with context: {context}")
-    return render(request, 'roles/create_profile.html', context)
-
-
-
-
-
-@login_required
-def home_etudiant(request):
-    """Handle student dashboard."""
-    matiere_unavailable_message = None
-    if request.method == 'POST':
-        form = StudentProfileForm(request.POST)
-        if form.is_valid():
-            profile = form.save(commit=False)
-            profile.etudiant = request.user.etudiant_profile
-            profile.save()
-            logger.info(f"Profile updated for user {request.user.username}")
-            return redirect('roles:home_etudiant')
-        else:
-            logger.debug(f"Form errors: {form.errors}")
-            messages.error(request, 'Please correct the errors below.')
-            # Check if matiere error is due to no available options
-            if 'matiere' in form.errors and 'filiere' in form.data and 'semestre' in form.data and 'niveau' in form.data:
-                try:
-                    filiere_id = int(form.data.get('filiere'))
-                    semestre_id = int(form.data.get('semestre'))
-                    niveau_id = int(form.data.get('niveau'))
-                    if not Matiere.objects.filter(
-                        filiere_id=filiere_id, semestre_id=semestre_id, niveau_id=niveau_id
-                    ).exists():
-                        matiere_unavailable_message = "No subjects are available for the selected combination. You can still save your profile."
-                except (ValueError, TypeError):
-                    pass
-    else:
-        form = StudentProfileForm()
-
-    # Fetch dropdown options directly from the database
-    annee_choices = Annee.objects.all()
-    niveau_choices = Niveau.objects.all()
-    filiere_choices = Filiere.objects.all()
-    semestre_choices = Semestre.objects.all()
-
-    # Prepare data for dynamic subject filtering
-    all_matieres = Matiere.objects.all().values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
-    matiere_data = {}
-    for m in all_matieres:
-        key = f"{m['filiere_id']}_{m['semestre_id']}_{m['niveau_id']}"
-        if key not in matiere_data:
-            matiere_data[key] = []
-        matiere_data[key].append({'id': m['id'], 'nom': m['nom_matiere']})
-
-    all_matieres_communes = MatiereCommune.objects.all().values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
-    matiere_commune_data = {}
-    for mc in all_matieres_communes:
-        key = f"{mc['filiere_id']}_{mc['semestre_id']}_{mc['niveau_id']}"
-        if key not in matiere_commune_data:
-            matiere_commune_data[key] = []
-        matiere_commune_data[key].append({'id': mc['id'], 'nom': mc['nom_matiere_commune']})
-
-    context = {
-        'form': form,
-        'annee_choices': annee_choices,
-        'niveau_choices': niveau_choices,
-        'filiere_choices': filiere_choices,
-        'semestre_choices': semestre_choices,
-        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
-        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
-        'matiere_unavailable_message': matiere_unavailable_message,
-    }
-    return render(request, 'roles/etudiant_dashboard.html', context)
 
 
 def verify_invitation(request, token):
@@ -465,13 +353,6 @@ def send_invitation(request):
         form = InvitationForm()
     return render(request, 'roles/send_invitation.html', {'form': form})
 
-@login_required
-def etudiant_dashboard(request):
-    """Etudiant dashboard."""
-    if request.user.role != 'etudiant':
-        messages.error(request, 'Access denied.')
-        return redirect('roles:signin')  # Namespaced
-    return render(request, 'roles/etudiant_dashboard.html')
 
 @login_required
 def enseignant_dashboard(request):
@@ -500,3 +381,77 @@ def superadmin_panel(request):
 def logout_view(request):
     logout(request)
     return redirect('roles:signin')  # or wherever you want to go after logout
+
+
+
+
+ # Code for the creation of profiles
+@login_required
+def etudiant_dashboard(request):
+    """Handle student dashboard and profile creation."""
+    # Role check first to preserve original logic
+    if request.user.role != 'etudiant':
+        messages.error(request, 'Access denied.')
+        return redirect('roles:signin')
+
+    matiere_unavailable_message = None
+    
+    if request.method == 'POST':
+        form = StudentProfileForm(request.POST)
+        if form.is_valid():
+            profile = form.save(commit=False)
+            profile.etudiant = request.user.etudiant_profile
+            profile.save()
+            messages.success(request, 'Profile created successfully.')
+            return redirect('roles:etudiant_dashboard')
+        else:
+            messages.error(request, 'Please correct the errors below.')
+            # Check if matiere error is due to no available options
+            if 'matiere' in form.errors and 'filiere' in form.data and 'semestre' in form.data and 'niveau' in form.data:
+                try:
+                    filiere_id = int(form.data.get('filiere'))
+                    semestre_id = int(form.data.get('semestre'))
+                    niveau_id = int(form.data.get('niveau'))
+                    if not Matiere.objects.filter(
+                        filiere_id=filiere_id, semestre_id=semestre_id, niveau_id=niveau_id
+                    ).exists():
+                        matiere_unavailable_message = "No subjects are available for the selected combination. You can still save your profile."
+                except (ValueError, TypeError):
+                    pass
+    else:
+        form = StudentProfileForm()
+
+    # Fetch dropdown options directly from the database
+    annee_choices = Annee.objects.all()
+    niveau_choices = Niveau.objects.all()
+    filiere_choices = Filiere.objects.all()
+    semestre_choices = Semestre.objects.all()
+
+    # Prepare data for dynamic subject filtering
+    all_matieres = Matiere.objects.all().values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_data = {}
+    for m in all_matieres:
+        key = f"{m['filiere_id']}_{m['semestre_id']}_{m['niveau_id']}"
+        if key not in matiere_data:
+            matiere_data[key] = []
+        matiere_data[key].append({'id': m['id'], 'nom': m['nom_matiere']})
+
+    all_matieres_communes = MatiereCommune.objects.all().values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
+    matiere_commune_data = {}
+    for mc in all_matieres_communes:
+        key = f"{mc['filiere_id']}_{mc['semestre_id']}_{mc['niveau_id']}"
+        if key not in matiere_commune_data:
+            matiere_commune_data[key] = []
+        matiere_commune_data[key].append({'id': mc['id'], 'nom': mc['nom_matiere_commune']})
+
+    context = {
+        'form': form,
+        'annee_choices': annee_choices,
+        'niveau_choices': niveau_choices,
+        'filiere_choices': filiere_choices,
+        'semestre_choices': semestre_choices,
+        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
+        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
+        'matiere_unavailable_message': matiere_unavailable_message,
+    }
+    return render(request, 'roles/etudiant_dashboard.html', context)
