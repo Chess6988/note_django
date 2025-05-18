@@ -20,7 +20,8 @@ def student_user():
 @pytest.fixture
 def annee():
     """Create an Annee instance."""
-    return Annee.objects.create(annee="2023-2024")
+    annee, _ = Annee.objects.get_or_create(annee="2023-2024")
+    return annee
 
 @pytest.fixture
 def filiere():

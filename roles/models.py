@@ -6,6 +6,22 @@ from django.core.exceptions import ValidationError
 from django.contrib.auth.hashers import make_password, check_password
 import uuid
 
+# Custom manager for Matiere
+class MatiereManager(models.Manager):
+    def by_combination(self, filiere, semestre, niveau):
+        """Filter Matiere instances by filiere, semestre, and niveau with optimized queries."""
+        return self.select_related('filiere', 'semestre', 'niveau').filter(
+            filiere=filiere, semestre=semestre, niveau=niveau
+        )
+
+# Custom manager for MatiereCommune
+class MatiereCommuneManager(models.Manager):
+    def by_combination(self, filiere, semestre, niveau):
+        """Filter MatiereCommune instances by filiere, semestre, and niveau with optimized queries."""
+        return self.select_related('filiere', 'semestre', 'niveau').filter(
+            filiere=filiere, semestre=semestre, niveau=niveau
+        )
+
 class User(AbstractUser):
     ROLE_CHOICES = [
         ('etudiant', 'Etudiant'),
@@ -34,7 +50,7 @@ class User(AbstractUser):
             'superadmin': '/superadmin/panel/',
         }
         return redirect_urls.get(self.role, '/signin/')
-    
+
 class Invitation(models.Model):
     ROLE_CHOICES = User.ROLE_CHOICES
     STATUS_CHOICES = [
@@ -123,6 +139,7 @@ class Annee(models.Model):
 
 class Niveau(models.Model):
     nom_niveau = models.CharField(max_length=50)
+    
     class Meta:
         db_table = 'niveaux'
     
@@ -131,6 +148,7 @@ class Niveau(models.Model):
 
 class Filiere(models.Model):
     nom_filiere = models.CharField(max_length=50)
+    
     class Meta:
         db_table = 'filieres'
     
@@ -139,6 +157,7 @@ class Filiere(models.Model):
 
 class Semestre(models.Model):
     nom_semestre = models.CharField(max_length=50)
+    
     class Meta:
         db_table = 'semestres'
     
@@ -168,8 +187,8 @@ class Enseignant(models.Model):
 class Etudiant(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='etudiant_profile')
     date_creation = models.DateTimeField(auto_now_add=True)
-    filiere = models.CharField(max_length=100, null=True, blank=True)
-    niveau = models.CharField(max_length=50, null=True, blank=True)
+    filiere = models.ForeignKey(Filiere, on_delete=models.SET_NULL, null=True, blank=True, db_column='id_filiere')
+    niveau = models.ForeignKey(Niveau, on_delete=models.SET_NULL, null=True, blank=True, db_column='id_niveau')
     
     class Meta:
         db_table = 'etudiants'
@@ -179,29 +198,40 @@ class Etudiant(models.Model):
 
 class Matiere(models.Model):
     nom_matiere = models.CharField(max_length=100)
-    course_code = models.CharField(max_length=52, unique=True, db_column='courseCode')
+    course_code = models.CharField(max_length=52, unique=True)  # Removed db_column='courseCode'
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, null=True, db_column='id_filiere')
     semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, null=True, db_column='id_semestre')
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, null=True, db_column='id_niveau')
 
+    objects = MatiereManager()
+
     class Meta:
         db_table = 'matieres'
+        indexes = [
+            models.Index(fields=['filiere', 'semestre', 'niveau']),
+        ]
     
     def __str__(self):
         return self.nom_matiere
 
 class MatiereCommune(models.Model):
     nom_matiere_commune = models.CharField(max_length=100)
-    course_code = models.CharField(max_length=52, unique=True, db_column='courseCode')
+    course_code = models.CharField(max_length=52, unique=True)  # Removed db_column='courseCode'
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, null=True, db_column='id_filiere')
     semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, null=True, db_column='id_semestre')
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, null=True, db_column='id_niveau')
 
+    objects = MatiereCommuneManager()
+
     class Meta:
         db_table = 'matieres_communes'
+        indexes = [
+            models.Index(fields=['filiere', 'semestre', 'niveau']),
+        ]
     
     def __str__(self):
         return self.nom_matiere_commune
+    
 
 class Note(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
@@ -214,7 +244,27 @@ class Note(models.Model):
 
     class Meta:
         db_table = 'notes'
-        unique_together = ('etudiant', 'matiere', 'annee')
+        constraints = [
+            models.CheckConstraint(
+                check=(
+                    models.Q(matiere__isnull=False, matiere_commune__isnull=True) |
+                    models.Q(matiere__isnull=True, matiere_commune__isnull=False)
+                ),
+                name='check_matiere_or_matiere_commune'
+            ),
+            models.UniqueConstraint(
+                fields=['etudiant', 'matiere', 'annee'],
+                condition=models.Q(matiere__isnull=False),
+                name='unique_etudiant_matiere_annee'
+            ),
+            models.UniqueConstraint(
+                fields=['etudiant', 'matiere_commune', 'annee'],
+                condition=models.Q(matiere_commune__isnull=False),
+                name='unique_etudiant_matiere_commune_annee'
+            )
+        ]
+
+
 
 class EnseignantAnnee(models.Model):
     enseignant = models.ForeignKey(Enseignant, on_delete=models.CASCADE, db_column='id_enseignant')
@@ -225,11 +275,10 @@ class EnseignantAnnee(models.Model):
         unique_together = ('enseignant', 'annee')
 
 def get_default_annee():
-    """Callable to return the current Annee instance for migrations."""
-    from django.utils import timezone  # Import here to avoid circular imports
+    """Callable to return the current Annee instance ID for default values."""
     current_year_str = Annee.get_current_academic_year_str()
     annee_instance, _ = Annee.objects.get_or_create(annee=current_year_str)
-    return annee_instance
+    return annee_instance.id
 
 class EtudiantAnnee(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
@@ -239,7 +288,7 @@ class EtudiantAnnee(models.Model):
         null=False,
         blank=False,
         db_column='id_annee',
-        default=get_default_annee  # Use callable to ensure instance is created
+        default=get_default_annee
     )
     
     class Meta:
@@ -276,26 +325,19 @@ class ProfileEnseignant(models.Model):
     class Meta:
         db_table = 'profile_enseignant'
 
-def get_default_annee():
-    current_year_str = Annee.get_current_academic_year_str()
-    annee_instance, _ = Annee.objects.get_or_create(annee=current_year_str)
-    return annee_instance.id  # Return the ID, not the instance
-
 class ProfileEtudiant(models.Model):
     etudiant = models.ForeignKey(Etudiant, on_delete=models.CASCADE, db_column='id_etudiant')
     filiere = models.ForeignKey(Filiere, on_delete=models.CASCADE, db_column='id_filiere')
-    matiere = models.ForeignKey(Matiere, on_delete=models.CASCADE, db_column='id_matiere')
     semestre = models.ForeignKey(Semestre, on_delete=models.CASCADE, db_column='id_semestre')
     annee = models.ForeignKey(
-    Annee,
-    on_delete=models.CASCADE,
-    null=False,
-    blank=False,
-    db_column='id_annee',  # If applicable
-    default=get_default_annee  # Ensure this function exists and works
-)
+        Annee,
+        on_delete=models.CASCADE,
+        null=False,
+        blank=False,
+        db_column='id_annee',
+        default=get_default_annee
+    )
     niveau = models.ForeignKey(Niveau, on_delete=models.CASCADE, db_column='id_niveau')
-    matiere_commune = models.ForeignKey(MatiereCommune, on_delete=models.CASCADE, null=True, blank=True, db_column='id_matiere_commune')
 
     class Meta:
         db_table = 'profile_etudiant'

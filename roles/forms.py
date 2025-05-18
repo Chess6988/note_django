@@ -133,7 +133,20 @@ class MatiereCommuneEtudiantForm(forms.ModelForm):
 # New forms for user interactions
 
 
+
 class StudentProfileForm(forms.ModelForm):
+    # Define matiere and matiere_commune as form fields
+    matiere = forms.ModelChoiceField(
+        queryset=Matiere.objects.none(),
+        required=True,  # Default, will be overridden in __init__ if needed
+        label='Subject'
+    )
+    matiere_commune = forms.ModelChoiceField(
+        queryset=MatiereCommune.objects.none(),
+        required=False,  # Optional field
+        label='Common Subject'
+    )
+
     class Meta:
         model = ProfileEtudiant
         exclude = ['etudiant']
@@ -163,7 +176,7 @@ class StudentProfileForm(forms.ModelForm):
                 niveau=self.instance.niveau
             )
             self.fields['matiere_commune'].queryset = MatiereCommune.objects.filter(
-                filiere=self.instance.filiere,
+                filiere=None,  # Fixed to include common subjects
                 semestre=self.instance.semestre,
                 niveau=self.instance.niveau
             )
@@ -177,7 +190,9 @@ class StudentProfileForm(forms.ModelForm):
                 )
                 self.fields['matiere'].queryset = matiere_queryset
                 self.fields['matiere_commune'].queryset = MatiereCommune.objects.filter(
-                    filiere_id=filiere_id, semestre_id=semestre_id, niveau_id=niveau_id
+                    filiere=None,  # Fixed to include common subjects
+                    semestre_id=semestre_id,
+                    niveau_id=niveau_id
                 )
                 # Make matiere optional if no options are available
                 if not matiere_queryset.exists():
@@ -190,8 +205,6 @@ class StudentProfileForm(forms.ModelForm):
             self.fields['matiere'].queryset = Matiere.objects.none()
             self.fields['matiere_commune'].queryset = MatiereCommune.objects.none()
             self.fields['matiere'].required = False
-
-
 
 
 # Forms for User Registration and Activation

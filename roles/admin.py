@@ -18,13 +18,13 @@ from .forms import (
 @admin.register(User)
 class UserAdmin(BaseUserAdmin):
     form = UserAdminForm  # Link custom form
-    list_display = ('username', 'email', 'role', 'first_name', 'last_name',  'is_staff')
-    search_fields = ('username', 'email', 'first_name', 'last_name', )
+    list_display = ('username', 'email', 'role', 'first_name', 'last_name', 'is_staff')
+    search_fields = ('username', 'email', 'first_name', 'last_name')
     list_filter = ('role', 'is_staff', 'is_superuser')
     
     fieldsets = (
         (None, {'fields': ('username', 'password')}),
-        ('Personal info', {'fields': ('first_name', 'last_name', 'email',  'role')}),
+        ('Personal info', {'fields': ('first_name', 'last_name', 'email', 'role')}),
         ('Permissions', {'fields': ('is_active', 'is_staff', 'is_superuser', 'groups', 'user_permissions')}),
         ('Important dates', {'fields': ('last_login', 'date_joined')}),
     )
@@ -32,7 +32,7 @@ class UserAdmin(BaseUserAdmin):
     add_fieldsets = (
         (None, {
             'classes': ('wide',),
-            'fields': ('username', 'email', 'password1', 'password2', 'role', ),
+            'fields': ('username', 'email', 'password1', 'password2', 'role'),
         }),
     )
 
@@ -99,8 +99,8 @@ class ProfileEnseignantAdmin(admin.ModelAdmin):
 @admin.register(ProfileEtudiant)
 class ProfileEtudiantAdmin(admin.ModelAdmin):
     form = ProfileEtudiantAdminForm  # Link custom form
-    list_display = ('etudiant', 'filiere', 'matiere', 'semestre', 'annee', 'niveau', 'matiere_commune')
-    search_fields = ('etudiant__user__username', 'matiere__nom_matiere', 'matiere_commune__nom_matiere_commune')
+    list_display = ('etudiant', 'filiere', 'semestre', 'annee', 'niveau')
+    search_fields = ('etudiant__user__username',)
     list_filter = ('filiere', 'semestre', 'annee', 'niveau')
 
 # Register Models with Minimal Admin Classes

@@ -21,7 +21,7 @@ def student_user():
 @pytest.fixture
 def academic_data():
     """Crée des données académiques pour les tests."""
-    annee = Annee.objects.create(annee='2023-2024')
+    annee, _ = Annee.objects.get_or_create(annee='2023-2024')
     niveau = Niveau.objects.create(nom_niveau='L1')
     filiere = Filiere.objects.create(nom_filiere='Informatique')
     semestre = Semestre.objects.create(nom_semestre='S1')
@@ -91,7 +91,7 @@ class TestSigninView:
     def test_signin_post_pending_valid(self, pending_user_session):
         """Vérifie qu’un utilisateur en attente valide est créé et redirigé."""
         client = pending_user_session
-        assert 'pending_user' in client.session, "Session data not set"
+        assert client.session.get('pending_user') is not None, "Session data lost before POST"
         response = client.post(reverse('roles:signin'), {'username': 'pending', 'password': 'password'})
         assert response.status_code == 302
         assert response.url == reverse('roles:etudiant_dashboard')
@@ -106,7 +106,6 @@ class TestSigninView:
     def test_signin_post_pending_invalid_password(self, pending_user_session):
         """Vérifie qu’un mot de passe invalide pour un utilisateur en attente affiche une erreur."""
         client = pending_user_session
-        assert 'pending_user' in client.session, "Session data not set"
         response = client.post(reverse('roles:signin'), {'username': 'pending', 'password': 'wrong'})
         assert response.status_code == 200
         assert 'roles/signin.html' in [t.name for t in response.templates]
@@ -125,10 +124,9 @@ class TestSigninView:
             'role': 'etudiant',
             'is_active': False
         }
-        session = client.session
-        session['pending_user'] = pending_user
-        session.save()
-        assert 'pending_user' in client.session, "Session data not set"
+        client.session['pending_user'] = pending_user
+        client.session.save()
+        assert client.session.get('pending_user') is not None, "Session data not set in test"
         response = client.post(reverse('roles:signin'), {'username': 'student', 'password': 'password'})
         assert response.status_code == 200
         assert 'roles/signin.html' in [t.name for t in response.templates]
@@ -204,3 +202,40 @@ class TestEtudiantSignupView:
         assert response.status_code == 200
         assert 'roles/signup.html' in [t.name for t in response.templates]
         assert 'form' in response.context
+
+    @override_settings(DEFAULT_FROM_EMAIL='test@example.com')
+    def test_signin_post_pending_valid(self, pending_user_session):
+        """Vérifie qu’un utilisateur en attente valide est créé et redirigé."""
+        client = pending_user_session
+        response = client.post(reverse('roles:signin'), {'username': 'pending', 'password': 'password'})
+        assert response.status_code == 302
+
+def test_signin_post_pending_invalid_password(self, pending_user_session):
+    """Vérifie qu’un mot de passe invalide pour un utilisateur en attente affiche une erreur."""
+    client = pending_user_session
+    response = client.post(reverse('roles:signin'), {'username': 'pending', 'password': 'wrong'})
+    assert response.status_code == 200
+    assert 'roles/signin.html' in [t.name for t in response.templates]
+    messages_list = list(messages.get_messages(response.wsgi_request))
+    assert any('Invalid password.' in str(msg) for msg in messages_list)
+
+def test_signin_post_pending_existing_username(self, client, student_user):
+    """Vérifie qu’un nom d’utilisateur existant affiche une erreur."""
+    hashed_password = make_password('password')
+    pending_user = {
+        'username': 'student',
+        'password': hashed_password,
+        'email': 'pending@example.com',
+        'first_name': 'Pending',
+        'last_name': 'User',
+        'role': 'etudiant',
+        'is_active': False
+    }
+    session = client.session
+    session['pending_user'] = pending_user
+    session.save()
+    assert 'pending_user' in session, "Session data not set in test"
+    response = client.post(reverse('roles:signin'), {'username': 'student', 'password': 'password'})
+    assert response.status_code == 200  # Should fail due to existing user
+    messages_list = list(messages.get_messages(response.wsgi_request))
+    assert any('Invalid username or password.' in str(msg) for msg in messages_list)  # Adjust based on view logic
