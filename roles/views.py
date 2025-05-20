@@ -1,5 +1,5 @@
 from django.conf import settings
-from django.http import HttpResponseRedirect
+from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template.loader import render_to_string
 from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect, get_object_or_404
@@ -20,6 +20,7 @@ from django.utils.crypto import constant_time_compare
 import json
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
+from django.forms import formset_factory
 
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
@@ -397,6 +398,12 @@ def logout_view(request):
 
 
 
+def fetch_profiles(request):
+    profiles = ProfileEtudiant.objects.filter(etudiant=request.user.etudiant_profile)
+    return HttpResponse(render_to_string('roles/profiles_partial.html', {'profiles': profiles}))
+
+
+
 @login_required
 def etudiant_dashboard(request):
     """Handle student dashboard and profile creation."""
@@ -404,59 +411,65 @@ def etudiant_dashboard(request):
         messages.error(request, 'Access denied.')
         return redirect('roles:signin')
 
+    # Define the formset class
+    StudentProfileFormSet = formset_factory(StudentProfileForm, extra=1)
     matiere_unavailable_message = None
     
     if request.method == 'POST':
-        form = StudentProfileForm(request.POST)
-        if form.is_valid():
-            profile = form.save(commit=False)
-            profile.etudiant = request.user.etudiant_profile
-            try:
-                has_subjects = Matiere.objects.filter(
-                    filiere=form.cleaned_data['filiere'],
-                    semestre=form.cleaned_data['semestre'],
-                    niveau=form.cleaned_data['niveau']
-                ).exists()
-                
-                if not has_subjects:
-                    matiere_unavailable_message = "No subjects are available for this selected combination"
-                    form.add_error(None, matiere_unavailable_message)
-                    raise ValidationError(matiere_unavailable_message)
+        formset = StudentProfileFormSet(request.POST)
+        if formset.is_valid():
+            success = True
+            for form in formset:
+                if form.cleaned_data:
+                    profile = form.save(commit=False)
+                    profile.etudiant = request.user.etudiant_profile
+                    try:
+                        has_subjects = Matiere.objects.filter(
+                            filiere=form.cleaned_data['filiere'],
+                            semestre=form.cleaned_data['semestre'],
+                            niveau=form.cleaned_data['niveau']
+                        ).exists()
+                        
+                        if not has_subjects:
+                            matiere_unavailable_message = "No subjects are available for this selected combination"
+                            form.add_error(None, matiere_unavailable_message)
+                            raise ValidationError(matiere_unavailable_message)
 
-                profile.save()
-                
-                # Handle matiere
-                matiere = form.cleaned_data.get('matiere')
-                if matiere:
-                    MatiereEtudiant.objects.create(
-                        etudiant=profile.etudiant,
-                        matiere=matiere,
-                        annee=profile.annee
-                    )
-                
-                # Handle matiere_commune
-                matiere_commune = form.cleaned_data.get('matiere_commune')
-                if matiere_commune:
-                    MatiereCommuneEtudiant.objects.create(
-                        etudiant=profile.etudiant,
-                        matiere_commune=matiere_commune,
-                        annee=profile.annee
-                    )
-                
-                messages.success(request, 'Profile created successfully.')
+                        profile.save()
+                        
+                        # Handle matiere
+                        matiere = form.cleaned_data.get('matiere')
+                        if matiere:
+                            MatiereEtudiant.objects.create(
+                                etudiant=profile.etudiant,
+                                matiere=matiere,
+                                annee=profile.annee
+                            )
+                        
+                        # Handle matiere_commune
+                        matiere_commune = form.cleaned_data.get('matiere_commune')
+                        if matiere_commune:
+                            MatiereCommuneEtudiant.objects.create(
+                                etudiant=profile.etudiant,
+                                matiere_commune=matiere_commune,
+                                annee=profile.annee
+                            )
+                    except ValidationError:
+                        success = False
+                    except IntegrityError:
+                        messages.error(request, 'A profile with this combination already exists.')
+                        form.add_error(None, 'A profile with this combination already exists.')
+                        success = False
+            if success:
+                messages.success(request, 'Profiles created successfully.')
                 return redirect('roles:etudiant_dashboard')
-            except ValidationError:
-                pass
-            except IntegrityError:
-                messages.error(request, 'Profile already exists for this combination.')
-                form.add_error(None, 'A profile with this combination already exists.')
         else:
             messages.error(request, 'Please correct the errors below.')
-            if all(key in form.data for key in ['filiere', 'semestre', 'niveau']):
+            if all(key in formset.data for key in ['form-0-filiere', 'form-0-semestre', 'form-0-niveau']):
                 try:
-                    filiere_id = form.data.get('filiere')
-                    semestre_id = form.data.get('semestre') 
-                    niveau_id = form.data.get('niveau')
+                    filiere_id = formset.data.get('form-0-filiere')
+                    semestre_id = formset.data.get('form-0-semestre') 
+                    niveau_id = formset.data.get('form-0-niveau')
                     
                     has_subjects = Matiere.objects.filter(
                         filiere_id=filiere_id,
@@ -470,7 +483,7 @@ def etudiant_dashboard(request):
                 except (ValueError, TypeError):
                     pass
     else:
-        form = StudentProfileForm()
+        formset = StudentProfileFormSet()
 
     # Fetch dropdown options using select_related to optimize queries
     annee_choices = Annee.objects.all()
@@ -478,49 +491,39 @@ def etudiant_dashboard(request):
     filiere_choices = Filiere.objects.all()
     semestre_choices = Semestre.objects.all()
 
-    # Use optimized managers to get all subjects
-    all_matieres = Matiere.objects.select_related(
-        'filiere', 'semestre', 'niveau'
-    ).values('id', 'nom_matiere', 'filiere_id', 'semestre_id', 'niveau_id')
-    
-    all_matieres_communes = MatiereCommune.objects.select_related(
-        'filiere', 'semestre', 'niveau'
-    ).values('id', 'nom_matiere_commune', 'filiere_id', 'semestre_id', 'niveau_id')
-
-    # Initialize data dictionaries
-    matiere_data = {}
-    matiere_commune_data = {}
-    
-    # Build matiere data
-    for m in all_matieres:
-        key = '_'.join([str(m['filiere_id']), str(m['semestre_id']), str(m['niveau_id'])])
-        if key not in matiere_data:
-            matiere_data[key] = []
-        matiere_data[key].append({
-            'id': m['id'],
-            'nom': m['nom_matiere']
-        })
-    
-    # Build matiere commune data
-    for mc in all_matieres_communes:
-        filiere_part = 'None' if mc['filiere_id'] is None else str(mc['filiere_id'])
-        key = '_'.join([filiere_part, str(mc['semestre_id']), str(mc['niveau_id'])])
-        if key not in matiere_commune_data:
-            matiere_commune_data[key] = []
-        matiere_commune_data[key].append({
-            'id': mc['id'],
-            'nom': mc['nom_matiere_commune']
-        })
-
     context = {
-        'form': form,
+        'formset': formset,
         'annee_choices': annee_choices,
         'niveau_choices': niveau_choices,
         'filiere_choices': filiere_choices,
         'semestre_choices': semestre_choices,
-        'matiere_data': json.dumps(matiere_data, cls=DjangoJSONEncoder),
-        'matiere_commune_data': json.dumps(matiere_commune_data, cls=DjangoJSONEncoder),
         'matiere_unavailable_message': matiere_unavailable_message,
     }
     
     return render(request, 'roles/etudiant_dashboard.html', context)
+
+
+def fetch_subjects(request):
+    """Fetch subjects via AJAX based on filiere, semestre, and niveau."""
+    filiere_id = request.GET.get('filiere')
+    semestre_id = request.GET.get('semestre')
+    niveau_id = request.GET.get('niveau')
+
+    matieres = Matiere.objects.filter(
+        filiere_id=filiere_id,
+        semestre_id=semestre_id,
+        niveau_id=niveau_id
+    ).values('id', 'nom_matiere')
+    
+    matieres_communes = MatiereCommune.objects.filter(
+        filiere=None,
+        semestre_id=semestre_id,
+        niveau_id=niveau_id
+    ).values('id', 'nom_matiere_commune')
+
+    data = {
+        'matieres': list(matieres),
+        'matieres_communes': list(matieres_communes),
+    }
+
+    return JsonResponse(data)

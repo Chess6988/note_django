@@ -1,0 +1,26 @@
+
+{% extends 'base.html' %}
+{% block title %}Votre profile{% endblock %}
+{% block content %}
+
+{% for profile in profiles %}
+    <div class="card">
+        <div class="card-body">
+            <h5 class="card-title">Profile - {{ profile.annee }}</h5>
+            <p><strong>Field:</strong> {{ profile.filiere }}</p>
+            <p><strong>Semester:</strong> {{ profile.semestre }}</p>
+            <p><strong>Level:</strong> {{ profile.niveau }}</p>
+            <p><strong>Subjects:</strong> 
+                {% for matiere in profile.etudiant.matiereetudiant_set.all %}
+                    {{ matiere.matiere.nom_matiere }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+                {% for commune in profile.etudiant.matierecommuneetudiant_set.all %}
+                    {{ commune.matiere_commune.nom_matiere_commune }}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+            </p>
+        </div>
+    </div>
+{% empty %}
+    <p class="text-muted">No profiles available.</p>
+{% endfor %}
+{% endblock %}
