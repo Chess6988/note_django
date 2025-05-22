@@ -3,6 +3,7 @@ from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
 from django.template.loader import render_to_string
 from django.core.exceptions import ValidationError
 from django.shortcuts import render, redirect, get_object_or_404
+from django.db import transaction
 from django.contrib.auth import login, authenticate, logout
 from django.contrib.auth.hashers import check_password
 from django.contrib import messages
@@ -21,6 +22,7 @@ import json
 from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
 from django.forms import formset_factory
+from django.utils.http import base36_to_int
 
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
@@ -30,248 +32,330 @@ from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationF
 logger = logging.getLogger(__name__)
 
 class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
+    """Token generator for 15-minute activation tokens."""
+    TOKEN_LIFETIME = 15 * 60  # 15 minutes in seconds
+
     def _make_hash_value(self, user, timestamp):
+        """Create a unique hash value for the user."""
         return (
             str(user.pk) + str(timestamp) +
             str(user.is_active) + str(user.email) +
             str(user.username)
         )
+    
     def check_token(self, user, token):
+        """
+        Validate the token with additional time expiration check.
+        Returns False if:
+        - User or token is missing
+        - Token format is invalid
+        - Token is expired (>15 minutes)
+        - Token doesn't match the user's data
+        """
         if not (user and token):
+            logger.debug("Missing user or token")
             return False
+
         try:
             ts_b36, _ = token.split("-")
             ts = base36_to_int(ts_b36)
-        except ValueError:
+            if (self._num_seconds(self._now()) - ts) > self.TOKEN_LIFETIME:
+                logger.debug(f"Token expired for user {user.username}")
+                return False
+        except (ValueError, TypeError) as e:
+            logger.error(f"Token validation error for user {user.username}: {str(e)}")
             return False
-        if (self._num_seconds(self._now()) - ts) > (15 * 60):  # 15 minutes
-            return False
+
         return super().check_token(user, token)
 
+# Initialize the token generator
 short_lived_token_generator = ShortLivedTokenGenerator()
 
 def send_activation_email(user_data, request):
-    """Send an activation email with a 15-second token using session data."""
-    token = short_lived_token_generator.make_token(user_data)  # Use custom token generator
-    uid = urlsafe_base64_encode(force_bytes(user_data.pk))  # Temporary ID from session
-    activation_link = request.build_absolute_uri(
-        reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
-    )
-    subject = "Activate Your Account"
-    message = render_to_string('activation_email.html', {
-        'user': user_data,
-        'activation_link': activation_link,
-    })
+    """
+    Send an activation email with a 15-minute token using session data.
+    
+    Args:
+        user_data: User instance with required fields (pk, email)
+        request: HttpRequest instance for building absolute URI
+        
+    Raises:
+        SMTPException: If email sending fails
+    """
     try:
-        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user_data.email], html_message=message, fail_silently=False)
+        # Generate token and activation link
+        token = short_lived_token_generator.make_token(user_data)
+        uid = urlsafe_base64_encode(force_bytes(user_data.pk))
+        activation_link = request.build_absolute_uri(
+            reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
+        )
+
+        # Prepare email content
+        subject = "Activate Your Account"
+        message = render_to_string('activation_email.html', {
+            'user': user_data,
+            'activation_link': activation_link,
+        })
+
+        # Send email
+        send_mail(
+            subject=subject,
+            message=message,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            recipient_list=[user_data.email],
+            html_message=message,
+            fail_silently=False
+        )
+        
+        logger.info(f"Activation email sent successfully to {user_data.email}")
     except Exception as e:
         logger.error(f"Failed to send activation email to {user_data.email}: {e}")
-        raise
+        raise  # Re-raise to handle in the view
 
 
 def etudiant_signup(request):
     """Handle Etudiant self-registration."""
+    # Redirect authenticated etudiant users
     if request.user.is_authenticated and request.user.role == 'etudiant':
         return redirect(request.user.get_redirect_url())
 
+    form = DefaultSignUpForm(request.POST or None)
+    
     if request.method == 'POST':
-        form = DefaultSignUpForm(request.POST)
-        if form.is_valid():
-            username = form.cleaned_data['username']
-            if User.objects.filter(username=username).exists():
-                messages.error(request, 'Username already exists')
-                return render(request, 'roles/signup.html', {'form': form})
-            try:
-                with transaction.atomic():
-                    user = form.save(commit=False)
-                    user.role = 'etudiant'
-                    user.is_active = False
-                    user.set_password(form.cleaned_data['password1'])
-                    user.save()
-
-                    # Store pending user in session
-                    pending_user = {
-                        'username': user.username,
-                        'email': user.email,
-                        'first_name': user.first_name,
-                        'last_name': user.last_name,
-                        'role': user.role,
-                        'password': user.password,  # Already hashed
-                        'is_active': user.is_active
-                    }
-                    request.session['pending_user'] = pending_user
-                    request.session.save()
-
-                    # Generate activation token
-                    uid = urlsafe_base64_encode(force_bytes(user.pk))
-                    token = default_token_generator.make_token(user)
-                    activation_link = request.build_absolute_uri(
-                        reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
-                    )
-
-                    # Send activation email
-                    send_mail(
-                        'Activate Your Account',
-                        f'Click the link to activate your account: {activation_link}',
-                        settings.DEFAULT_FROM_EMAIL,
-                        [user.email],
-                        fail_silently=False,
-                    )
-                    messages.success(request, 'Activation email sent. Please check your email.')
-                    return redirect('roles:signin')
-            except Exception as e:
-                logger.error(f"Error during signup: {e}")
-                messages.error(request, 'An error occurred. Please try again later.')
-                return render(request, 'roles/signup.html', {'form': form})
-        else:
-            messages.error(request, 'Please correct the errors below.')
-    else:
-        form = DefaultSignUpForm()
-
+        return _handle_post_request(request, form)
+    
     return render(request, 'roles/signup.html', {'form': form})
 
+def _handle_post_request(request, form):
+    """Process POST request for signup."""
+    if not form.is_valid():
+        messages.error(request, 'Please correct the errors below.')
+        return render(request, 'roles/signup.html', {'form': form})
+
+    username = form.cleaned_data['username']
+    if User.objects.filter(username=username).exists():
+        messages.error(request, 'Username already exists')
+        return render(request, 'roles/signup.html', {'form': form})
+
+    try:
+        user = _create_pending_user(form)
+        _store_pending_user_in_session(request, user)
+        send_activation_email(user, request)
+        messages.success(request, 'Activation email sent. Please check your email.')
+        return redirect('roles:signin')
+    except Exception as e:
+        logger.error(f"Error during signup: {e}")
+        messages.error(request, 'An error occurred. Please try again later.')
+        return render(request, 'roles/signup.html', {'form': form})
+
+def _create_pending_user(form):
+    """Create and save a pending user with atomic transaction."""
+    with transaction.atomic():
+        user = form.save(commit=False)
+        user.role = 'etudiant'
+        user.is_active = False
+        user.set_password(form.cleaned_data['password1'])
+        user.save()
+    return user
+
+def _store_pending_user_in_session(request, user):
+    """Store pending user details in session."""
+    pending_user = {
+        'username': user.username,
+        'email': user.email,
+        'first_name': user.first_name,
+        'last_name': user.last_name,
+        'role': user.role,
+        'password': user.password,  # Already hashed
+        'is_active': user.is_active,
+        'pk': user.pk  # Store pk for activation
+    }
+    request.session['pending_user'] = pending_user
+    request.session.save()
+    # End of etudiant signup
+    # Start of signin view
 
 
 def signin(request):
     """Handle user login."""
     if request.method == 'POST':
-        username = request.POST.get('username')
-        password = request.POST.get('password')
-        pending_user = request.session.get('pending_user')
-        logger.debug(f"Signin attempt for {username}, pending_user: {pending_user}")
-
-        if pending_user and pending_user['username'] == username:
-            logger.debug(f"Checking password for pending user {username}")
-            # Vérifier si un autre utilisateur existe déjà avec ce nom
-            if User.objects.filter(username=username).exclude(email=pending_user['email']).exists():
-                logger.error(f"Username {username} already exists for another user")
-                messages.error(request, 'Username or email already exists.')
-                return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
-
-            if check_password(password, pending_user['password']):
-                try:
-                    user = User(
-                        username=pending_user['username'],
-                        email=pending_user['email'],
-                        first_name=pending_user['first_name'],
-                        last_name=pending_user['last_name'],
-                        role=pending_user['role'],
-                        is_active=True
-                    )
-                    user.password = pending_user['password']
-                    user.save()
-                    if user.role == 'etudiant':
-                        Etudiant.objects.create(user=user)
-                    login(request, user)
-                    del request.session['pending_user']
-                    request.session.modified = True
-                    logger.info(f"User {username} logged in, redirecting to etudiant_dashboard")
-                    return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
-                except IntegrityError:
-                    logger.error(f"IntegrityError: Username {username} or email already exists")
-                    messages.error(request, 'Username or email already exists.')
-                except Exception as e:
-                    logger.error(f"Error during signin: {e}")
-                    messages.error(request, 'An error occurred. Please try again.')
-            else:
-                logger.error(f"Invalid password for pending user {username}")
-                messages.error(request, 'Invalid password.')
-        else:
-            logger.debug(f"Checking non-pending user {username}")
-            user = authenticate(request, username=username, password=password)
-            if user:
-                login(request, user)
-                logger.info(f"User {username} logged in")
-                if user.role == 'etudiant':
-                    return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
-                else:
-                    messages.info(request, 'Login successful. Please proceed to your dashboard.')
-                    return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
-            else:
-                logger.error(f"Invalid username or password for {username}")
-                messages.error(request, 'Invalid username or password.')
-
+        return _handle_post_request(request)
+    
     logger.debug("Rendering signin.html")
     return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
 
+def _handle_post_request(request):
+    """Process POST request for signin."""
+    username = request.POST.get('username')
+    password = request.POST.get('password')
+    pending_user = request.session.get('pending_user')
+    logger.debug(f"Signin attempt for {username}, pending_user: {pending_user}")
+
+    if pending_user and pending_user['username'] == username:
+        return _handle_pending_user(request, username, password, pending_user)
+    
+    return _handle_existing_user(request, username, password)
+
+def _handle_pending_user(request, username, password, pending_user):
+    """Process signin for a pending user."""
+    logger.debug(f"Checking password for pending user {username}")
+    
+    # Check if username exists with a different email
+    if User.objects.filter(username=username).exclude(email=pending_user['email']).exists():
+        logger.error(f"Username {username} already exists for another user")
+        messages.error(request, 'Username or email already exists.')
+        return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+    if not check_password(password, pending_user['password']):
+        logger.error(f"Invalid password for pending user {username}")
+        messages.error(request, 'Invalid password.')
+        return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+    try:
+        user = _create_active_user(pending_user)
+        _finalize_user_setup(request, user)
+        logger.info(f"User {username} logged in, redirecting to etudiant_dashboard")
+        return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
+    except IntegrityError:
+        logger.error(f"IntegrityError: Username {username} or email already exists")
+        messages.error(request, 'Username or email already exists.')
+    except Exception as e:
+        logger.error(f"Error during signin: {e}")
+        messages.error(request, 'An error occurred. Please try again.')
+    
+    return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+def _handle_existing_user(request, username, password):
+    """Process signin for an existing user."""
+    logger.debug(f"Checking non-pending user {username}")
+    user = authenticate(request, username=username, password=password)
+    
+    if not user:
+        logger.error(f"Invalid username or password for {username}")
+        messages.error(request, 'Invalid username or password.')
+        return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+    login(request, user)
+    logger.info(f"User {username} logged in")
+    
+    if user.role == 'etudiant':
+        return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
+    
+    messages.info(request, 'Login successful. Please proceed to your dashboard.')
+    return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+def _create_active_user(pending_user):
+    """Create and save an active user from pending user data."""
+    user = User(
+        username=pending_user['username'],
+        email=pending_user['email'],
+        first_name=pending_user['first_name'],
+        last_name=pending_user['last_name'],
+        role=pending_user['role'],
+        is_active=True
+    )
+    user.password = pending_user['password']
+    user.save()
+    return user
+
+def _finalize_user_setup(request, user):
+    """Complete user setup, including Etudiant creation and session cleanup."""
+    if user.role == 'etudiant':
+        Etudiant.objects.create(user=user)
+    login(request, user)
+    del request.session['pending_user']
+    request.session.modified = True
+ # End of signin view
+ # Start of activate_account view
 
 
 def activate_account(request, uidb64, token):
     """Activate user account via email token."""
     try:
-        uid = force_str(urlsafe_base64_decode(uidb64))
-        pending_user = request.session.get('pending_user')
-        if not pending_user:
-            raise ValueError("No pending user data found.")
-        user = User(
-            username=pending_user['username'],
-            email=pending_user['email'],
-            first_name=pending_user['first_name'],
-            last_name=pending_user['last_name'],
-            role=pending_user['role'],
-            is_active=pending_user['is_active']
-        )
-        user.password = pending_user['password']
-    except (TypeError, ValueError, OverflowError) as e:
-        user = None
+        user = _get_user_from_session_and_uid(request, uidb64)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
+        logger.error(f"Invalid activation link: {str(e)}")
         messages.error(request, f'Invalid activation link: {str(e)}')
         return redirect('roles:resend_activation')
-    
-    if user and short_lived_token_generator.check_token(user, token):
-        user.is_active = True
-        try:
-            user.save()
-            if user.role == 'etudiant':
-                Etudiant.objects.create(user=user)
-            del request.session['pending_user']
-            messages.success(request, 'Account activated! Please sign in.')
-            return redirect('roles:signin')
-        except IntegrityError:
-            logger.error(f"IntegrityError: User {user.username} already exists")
-            messages.error(request, 'User already exists.')
-            return redirect('roles:resend_activation')
-    else:
-        logger.error(f"Token check failed for user {user.username if user else 'None'}")
+
+    if not short_lived_token_generator.check_token(user, token):
+        logger.error(f"Token check failed for user {user.username}")
         messages.error(request, 'Invalid or expired activation link.')
         return redirect('roles:resend_activation')
+
+    return _activate_user(request, user)
 
 def resend_activation(request):
     """Resend activation email."""
     if request.method == 'POST':
-        form = ResendActivationForm(request.POST)
-        if form.is_valid():
-            email = form.cleaned_data['email']
-            pending_user = request.session.get('pending_user')
-            if pending_user and pending_user['email'] == email:
-                user = User(
-                    username=pending_user['username'],
-                    email=pending_user['email'],
-                    first_name=pending_user['first_name'],  # Include first_name
-                    last_name=pending_user['last_name'],    # Include last_name
-                    role=pending_user['role'],
-                    is_active=pending_user['is_active']
-                )
-                user.password = pending_user['password']  # Set hashed password directly
-                try:
-                    send_activation_email(user, request)
-                    messages.success(request, 'Activation email resent. Check your email.')
-                except Exception as e:
-                    logger.error(f"Error resending activation: {e}")
-                    messages.error(request, 'An error occurred. Please try again.')
-            else:
-                messages.error(request, 'No pending account found with this email.')
-            return redirect('roles:signin')
-    else:
-        form = ResendActivationForm()
+        return _handle_resend_post_request(request)
+    
+    form = ResendActivationForm()
     return render(request, 'roles/resend_activation.html', {'form': form})
 
+def _get_user_from_session_and_uid(request, uidb64):
+    """Retrieve user from session and decoded UID."""
+    uid = force_str(urlsafe_base64_decode(uidb64))
+    pending_user = request.session.get('pending_user')
+    if not pending_user:
+        raise ValueError("No pending user data found.")
+    return User.objects.get(pk=pending_user['pk'])
+
+def _activate_user(request, user):
+    """Activate user, create Etudiant if needed, and clean up session."""
+    user.is_active = True
+    try:
+        user.save()
+        if user.role == 'etudiant':
+            Etudiant.objects.create(user=user)
+        del request.session['pending_user']
+        messages.success(request, 'Account activated! Please sign in.')
+        return redirect('roles:signin')
+    except IntegrityError:
+        logger.error(f"IntegrityError: User {user.username} already exists")
+        messages.error(request, 'User already exists.')
+        return redirect('roles:resend_activation')
+
+def _handle_resend_post_request(request):
+    """Process POST request for resending activation email."""
+    form = ResendActivationForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, 'Please correct the errors below.')
+        return render(request, 'roles/resend_activation.html', {'form': form})
+
+    email = form.cleaned_data['email']
+    pending_user = request.session.get('pending_user')
+    
+    if not (pending_user and pending_user['email'] == email):
+        messages.error(request, 'No pending account found with this email.')
+        return redirect('roles:signin')
+
+    user = _create_user_from_pending(pending_user)
+    try:
+        send_activation_email(user, request)
+        messages.success(request, 'Activation email resent. Check your email.')
+    except Exception as e:
+        logger.error(f"Error resending activation: {e}")
+        messages.error(request, 'An error occurred. Please try again.')
+    
+    return redirect('roles:signin')
+
+def _create_user_from_pending(pending_user):
+    """Create a User instance from pending user data."""
+    user = User(
+        username=pending_user['username'],
+        email=pending_user['email'],
+        first_name=pending_user['first_name'],
+        last_name=pending_user['last_name'],
+        role=pending_user['role'],
+        is_active=pending_user['is_active']
+    )
+    user.password = pending_user['password']  # Set hashed password
+    return user
 
 
-
-
-
-# Etudiant creating his profile
-
+# End of activate_account view
+# Start of verify_invitation view
 
 
 def verify_invitation(request, token):
@@ -411,19 +495,16 @@ def etudiant_dashboard(request):
         messages.error(request, 'Access denied.')
         return redirect('roles:signin')
 
-    # Define the formset class
     StudentProfileFormSet = formset_factory(StudentProfileForm, extra=1)
     matiere_unavailable_message = None
-    
     if request.method == 'POST':
         formset = StudentProfileFormSet(request.POST)
         if formset.is_valid():
             success = True
             for form in formset:
                 if form.cleaned_data:
-                    profile = form.save(commit=False)
-                    profile.etudiant = request.user.etudiant_profile
                     try:
+                        # Check for subjects first
                         has_subjects = Matiere.objects.filter(
                             filiere=form.cleaned_data['filiere'],
                             semestre=form.cleaned_data['semestre'],
@@ -431,13 +512,18 @@ def etudiant_dashboard(request):
                         ).exists()
                         
                         if not has_subjects:
-                            matiere_unavailable_message = "No subjects are available for this selected combination"
+                            matiere_unavailable_message = "No subjects are available for this combination"
                             form.add_error(None, matiere_unavailable_message)
-                            raise ValidationError(matiere_unavailable_message)
+                            messages.warning(request, matiere_unavailable_message)
+                            success = False
+                            break
 
+                        # If subjects exist, create the profile
+                        profile = form.save(commit=False)
+                        profile.etudiant = request.user.etudiant_profile
                         profile.save()
                         
-                        # Handle matiere
+                        # Create matiere relationship
                         matiere = form.cleaned_data.get('matiere')
                         if matiere:
                             MatiereEtudiant.objects.create(
@@ -446,7 +532,7 @@ def etudiant_dashboard(request):
                                 annee=profile.annee
                             )
                         
-                        # Handle matiere_commune
+                        # Create matiere_commune relationship if it exists
                         matiere_commune = form.cleaned_data.get('matiere_commune')
                         if matiere_commune:
                             MatiereCommuneEtudiant.objects.create(
@@ -454,21 +540,25 @@ def etudiant_dashboard(request):
                                 matiere_commune=matiere_commune,
                                 annee=profile.annee
                             )
-                    except ValidationError:
+                    except ValidationError as e:
+                        form.add_error(None, str(e))
                         success = False
+                        break
                     except IntegrityError:
                         messages.error(request, 'A profile with this combination already exists.')
                         form.add_error(None, 'A profile with this combination already exists.')
                         success = False
+                        break
+
             if success:
                 messages.success(request, 'Profiles created successfully.')
-                return redirect('roles:etudiant_dashboard')
+                return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
         else:
             messages.error(request, 'Please correct the errors below.')
             if all(key in formset.data for key in ['form-0-filiere', 'form-0-semestre', 'form-0-niveau']):
                 try:
                     filiere_id = formset.data.get('form-0-filiere')
-                    semestre_id = formset.data.get('form-0-semestre') 
+                    semestre_id = formset.data.get('form-0-semestre')
                     niveau_id = formset.data.get('form-0-niveau')
                     
                     has_subjects = Matiere.objects.filter(
@@ -485,7 +575,6 @@ def etudiant_dashboard(request):
     else:
         formset = StudentProfileFormSet()
 
-    # Fetch dropdown options using select_related to optimize queries
     annee_choices = Annee.objects.all()
     niveau_choices = Niveau.objects.all()
     filiere_choices = Filiere.objects.all()
@@ -501,7 +590,6 @@ def etudiant_dashboard(request):
     }
     
     return render(request, 'roles/etudiant_dashboard.html', context)
-
 
 def fetch_subjects(request):
     """Fetch subjects via AJAX based on filiere, semestre, and niveau."""
