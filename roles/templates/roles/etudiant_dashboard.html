@@ -224,16 +224,18 @@
 
                 {% if matiere_unavailable_message %}
                     <div class="alert alert-info">{{ matiere_unavailable_message }}</div>
-                {% endif %}
-
-                <form method="post" action="{% url 'roles:etudiant_dashboard' %}" id="profileForm">
-                    {% csrf_token %}                    <!-- Hidden form fields to ensure Django form validation -->
-                    <input type="hidden" name="annee" id="hidden_annee">
-                    <input type="hidden" name="niveau" id="hidden_niveau">
-                    <input type="hidden" name="filiere" id="hidden_filiere">
-                    <input type="hidden" name="semestre" id="hidden_semestre">
-                    <input type="hidden" name="matiere" id="hidden_matiere">
-                    <input type="hidden" name="matiere_commune" id="hidden_matiere_commune">
+                {% endif %}                <form method="post" action="{% url 'roles:etudiant_dashboard' %}" id="profileForm">
+                    {% csrf_token %}
+                    <input type="hidden" name="form-TOTAL_FORMS" value="1">
+                    <input type="hidden" name="form-INITIAL_FORMS" value="0">
+                    <input type="hidden" name="form-MIN_NUM_FORMS" value="0">
+                    <input type="hidden" name="form-MAX_NUM_FORMS" value="1000">
+                    <input type="hidden" name="form-0-annee" id="hidden_annee">
+                    <input type="hidden" name="form-0-niveau" id="hidden_niveau">
+                    <input type="hidden" name="form-0-filiere" id="hidden_filiere">
+                    <input type="hidden" name="form-0-semestre" id="hidden_semestre">
+                    <input type="hidden" name="form-0-matiere" id="hidden_matiere">
+                    <input type="hidden" name="form-0-matiere_commune" id="hidden_matiere_commune">
 
                     <!-- Step 1: Academic Year & Level -->
                     <div class="step active" id="step1">
@@ -359,6 +361,11 @@
             document.getElementById('hidden_semestre').value = semestreSelect.value;
             document.getElementById('hidden_matiere').value = matiereSelect.value;
             document.getElementById('hidden_matiere_commune').value = matiereCommuneSelect.value;
+            // Set management form fields
+            document.getElementsByName('form-TOTAL_FORMS')[0].value = '1';
+            document.getElementsByName('form-INITIAL_FORMS')[0].value = '0';
+            document.getElementsByName('form-MIN_NUM_FORMS')[0].value = '0';
+            document.getElementsByName('form-MAX_NUM_FORMS')[0].value = '1000';
         }
 
         function updateStep(stepNumber) {

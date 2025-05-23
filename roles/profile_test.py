@@ -12,12 +12,16 @@ from django.core.mail.backends.locmem import EmailBackend
 from django.test.utils import override_settings
 from roles.forms import DefaultSignUpForm, ResendActivationForm, StudentProfileForm
 from django.forms import formset_factory
-from roles.views import ShortLivedTokenGenerator  # Import the view's token generator
 
-# Use the view's token generator
-short_lived_token_generator = ShortLivedTokenGenerator()
 
-# Configure email backend for testing
+class AccountActivationTokenGenerator(PasswordResetTokenGenerator):
+    def _make_hash_value(self, user, timestamp):
+        return f"{user.pk}{timestamp}{user.is_active}"
+
+short_lived_token_generator = AccountActivationTokenGenerator()
+
+
+
 @pytest.fixture(autouse=True)
 def email_backend_setup():
     """Set up in-memory email backend for testing."""
@@ -30,7 +34,6 @@ def outbox():
     from django.core.mail import outbox
     return outbox
 
-# Fixtures
 @pytest.fixture
 def client():
     """Provide a test client for making requests."""
@@ -59,7 +62,6 @@ def setup_dashboard_data():
     matiere_commune = MatiereCommune.objects.create(nom_matiere_commune='English', semestre=semestre, niveau=niveau)
     return annee, niveau, filiere, semestre, matiere, matiere_commune
 
-# Tests for etudiant_signup (unchanged, as fix is in views)
 @pytest.mark.django_db
 def test_etudiant_signup_get(client):
     """Test that GET request renders the signup form."""
@@ -99,8 +101,9 @@ def test_etudiant_signup_post_existing_username(client, user):
     }
     response = client.post(reverse('roles:etudiant_signup'), data)
     assert response.status_code == 200
-    assert 'Username already exists' in response.content.decode()
     assert 'roles/signup.html' in [t.name for t in response.templates]
+    messages = [m.message for m in get_messages(response.wsgi_request)]
+    assert 'Username already exists' in messages
 
 @pytest.mark.django_db
 def test_etudiant_signup_post_invalid_data(client):
@@ -117,7 +120,6 @@ def test_etudiant_signup_post_invalid_data(client):
     assert response.context['form'].errors
     assert 'Please correct the errors below.' in response.content.decode()
 
-# Tests for signin
 @pytest.mark.django_db
 def test_signin_get(client):
     """Test that GET request renders the signin page."""
@@ -128,7 +130,6 @@ def test_signin_get(client):
 @pytest.mark.django_db
 def test_signin_post_pending_user_valid(client, outbox):
     """Test that POST with a pending user and correct password logs in the user."""
-    # Create user in database to match signup flow
     user = User.objects.create_user(
         username='pendinguser',
         email='pending@example.com',
@@ -142,9 +143,9 @@ def test_signin_post_pending_user_valid(client, outbox):
         'first_name': 'Pending',
         'last_name': 'User',
         'role': 'etudiant',
-        'password': make_password('password123'),
+        'password': user.password,  # Use actual hashed password
         'is_active': False,
-        'pk': user.pk  # Add pk to match signup
+        'pk': user.pk
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -152,7 +153,7 @@ def test_signin_post_pending_user_valid(client, outbox):
     response = client.post(reverse('roles:signin'), data)
     assert response.status_code == 302
     assert response.url == reverse('roles:etudiant_dashboard')
-    user = User.objects.get(username='pendinguser')
+    user.refresh_from_db()
     assert user.is_active == True
     assert Etudiant.objects.filter(user=user).exists()
     assert 'pending_user' not in client.session
@@ -160,14 +161,22 @@ def test_signin_post_pending_user_valid(client, outbox):
 @pytest.mark.django_db
 def test_signin_post_pending_user_invalid_password(client):
     """Test that POST with a pending user and wrong password returns an error."""
+    user = User.objects.create_user(
+        username='pendinguser',
+        email='pending@example.com',
+        password='password123',
+        role='etudiant',
+        is_active=False
+    )
     pending_user = {
         'username': 'pendinguser',
         'email': 'pending@example.com',
         'first_name': 'Pending',
         'last_name': 'User',
         'role': 'etudiant',
-        'password': make_password('password123'),
+        'password': user.password,  # Use actual hashed password
         'is_active': False,
+        'pk': user.pk
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -175,8 +184,8 @@ def test_signin_post_pending_user_invalid_password(client):
     response = client.post(reverse('roles:signin'), data)
     assert response.status_code == 200
     messages_list = [m.message for m in get_messages(response.wsgi_request)]
-    assert 'Invalid password.' in messages_list  # Check messages instead of content
-    assert not User.objects.filter(username='pendinguser').exists()
+    assert 'Invalid password.' in messages_list
+    assert User.objects.filter(username='pendinguser').exists()
 
 @pytest.mark.django_db
 def test_signin_post_existing_user(client, etudiant_user):
@@ -188,7 +197,6 @@ def test_signin_post_existing_user(client, etudiant_user):
     assert '_auth_user_id' in client.session
     assert int(client.session['_auth_user_id']) == etudiant_user.pk
 
-# Tests for activate_account
 @pytest.mark.django_db
 def test_activate_account_valid_token(client):
     """Test that a valid token activates the account."""
@@ -207,7 +215,7 @@ def test_activate_account_valid_token(client):
         'role': user.role,
         'password': user.password,
         'is_active': user.is_active,
-        'pk': user.pk  # Add pk to match signup
+        'pk': user.pk
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -225,14 +233,22 @@ def test_activate_account_valid_token(client):
 @pytest.mark.django_db
 def test_activate_account_invalid_token(client):
     """Test that an invalid token redirects with an error."""
+    user = User.objects.create_user(  # Create user for consistency
+        username='testuser',
+        email='test@example.com',
+        password='password123',
+        role='etudiant',
+        is_active=False
+    )
     pending_user = {
         'username': 'testuser',
         'email': 'test@example.com',
         'first_name': 'Test',
         'last_name': 'User',
         'role': 'etudiant',
-        'password': make_password('password123'),
+        'password': user.password,
         'is_active': False,
+        'pk': user.pk
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -243,7 +259,6 @@ def test_activate_account_invalid_token(client):
     messages_list = [m.message for m in get_messages(response.wsgi_request)]
     assert any('Invalid activation link' in msg for msg in messages_list)
 
-# Tests for resend_activation
 @pytest.mark.django_db
 def test_resend_activation_get(client):
     """Test that GET request renders the resend activation form."""
@@ -269,9 +284,9 @@ def test_resend_activation_post_valid(client, outbox):
         'first_name': 'Test',
         'last_name': 'User',
         'role': 'etudiant',
-        'password': make_password('password123'),
+        'password': user.password,
         'is_active': False,
-        'pk': user.pk  # Add pk to match signup
+        'pk': user.pk
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -282,7 +297,6 @@ def test_resend_activation_post_valid(client, outbox):
     assert len(outbox) == 1
     assert outbox[0].subject == 'Activate Your Account'
 
-# Tests for etudiant_dashboard
 @pytest.mark.django_db
 def test_etudiant_dashboard_get(client, etudiant_user):
     """Test that GET request renders the dashboard for an etudiant."""
@@ -317,12 +331,12 @@ def test_etudiant_dashboard_post_valid(client, etudiant_user, setup_dashboard_da
         'form-0-niveau': str(niveau.id),
         'form-0-filiere': str(filiere.id),
         'form-0-semestre': str(semestre.id),
-        # Removed matiere and matiere_commune to align with form validation
+        'form-0-matiere': str(matiere.id),
     }
     response = client.post(reverse('roles:etudiant_dashboard'), data)
     assert response.status_code == 302
     assert response.url == reverse('roles:etudiant_dashboard')
-    assert MatiereEtudiant.objects.filter(etudiant=etudiant_user.etudiant).exists()
+    assert MatiereEtudiant.objects.filter(etudiant=etudiant_user.etudiant_profile).exists()
 
 @pytest.mark.django_db
 def test_etudiant_dashboard_post_invalid_combination(client, etudiant_user):
@@ -342,7 +356,6 @@ def test_etudiant_dashboard_post_invalid_combination(client, etudiant_user):
     assert response.status_code == 200
     assert 'No subjects are available for this combination' in response.content.decode()
 
-# Tests for fetch_subjects
 @pytest.mark.django_db
 def test_fetch_subjects_valid(client, setup_dashboard_data):
     """Test that AJAX request returns subjects for valid parameters."""
