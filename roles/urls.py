@@ -1,11 +1,12 @@
+# urls.py
 from django.urls import path
 from . import views
 
 app_name = 'roles'
 
 urlpatterns = [
-    path('', views.etudiant_signup, name='home'),  # New root URL for signup page
-    path('signup/', views.etudiant_signup, name='etudiant_signup'),  # Keep this for direct access
+    path('', views.etudiant_signup, name='home'),
+    path('signup/', views.etudiant_signup, name='etudiant_signup'),
     path('activate/<str:uidb64>/<str:token>/', views.activate_account, name='activate'),
     path('resend-activation/', views.resend_activation, name='resend_activation'),
     path('signin/', views.signin, name='signin'),
@@ -17,9 +18,6 @@ urlpatterns = [
     path('admin/panel/', views.admin_panel, name='admin_panel'),
     path('superadmin/panel/', views.superadmin_panel, name='superadmin_panel'),
     path('logout/', views.logout_view, name='logout'),
-
     path('fetch-subjects/', views.fetch_subjects, name='fetch_subjects'),
-    path('fetch-profiles/', views.fetch_profiles, name='fetch_profiles')
-
+    path('fetch-profiles/', views.fetch_profiles, name='fetch_profiles'),
 ]
-

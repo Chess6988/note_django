@@ -221,10 +221,10 @@
                         </div>
                     </div>
                 </div>
-
                 {% if matiere_unavailable_message %}
                     <div class="alert alert-info">{{ matiere_unavailable_message }}</div>
-                {% endif %}                <form method="post" action="{% url 'roles:etudiant_dashboard' %}" id="profileForm">
+                {% endif %}
+                <form method="post" action="{% url 'roles:etudiant_dashboard' %}" id="profileForm">
                     {% csrf_token %}
                     <input type="hidden" name="form-TOTAL_FORMS" value="1">
                     <input type="hidden" name="form-INITIAL_FORMS" value="0">
@@ -234,8 +234,6 @@
                     <input type="hidden" name="form-0-niveau" id="hidden_niveau">
                     <input type="hidden" name="form-0-filiere" id="hidden_filiere">
                     <input type="hidden" name="form-0-semestre" id="hidden_semestre">
-                    <input type="hidden" name="form-0-matiere" id="hidden_matiere">
-                    <input type="hidden" name="form-0-matiere_commune" id="hidden_matiere_commune">
 
                     <!-- Step 1: Academic Year & Level -->
                     <div class="step active" id="step1">
@@ -294,20 +292,12 @@
 
                     <!-- Step 3: Subjects -->
                     <div class="step" id="step3">
-                        <button type="button" id="generateButton" class="btn btn-secondary mb-3" disabled><i class="bi bi-arrow-clockwise me-2"></i>Generate Subjects</button>
-                        <div class="form-group">
-                            <label for="id_matiere"><i class="bi bi-book me-2"></i>Subject:</label>
-                            <select id="id_matiere" name="matiere" class="form-select" disabled>
-                                <option value="">Select Subject</option>
-                            </select>
-                            {{ form.matiere.errors }}
+                        <h5>Generated Subjects</h5>
+                        <div id="matiereDisplay" class="mb-3">
+                            <p><strong>Subjects:</strong> <span id="matiereText">Not generated yet</span></p>
                         </div>
-                        <div class="form-group">
-                            <label for="id_matiere_commune"><i class="bi bi-collection me-2"></i>Common Subject (Optional):</label>
-                            <select id="id_matiere_commune" name="matiere_commune" class="form-select" disabled>
-                                <option value="">Select Common Subject</option>
-                            </select>
-                            {{ form.matiere_commune.errors }}
+                        <div id="matiereCommuneDisplay" class="mb-3">
+                            <p><strong>Common Subjects:</strong> <span id="matiereCommuneText">Not generated yet</span></p>
                         </div>
                         <div class="step-actions">
                             <button type="button" class="btn btn-secondary prev-step" data-prev="2">Previous</button>
@@ -324,314 +314,142 @@
 {{ matiere_commune_data|json_script:"matiere-commune-data" }}
 
 <script>
-    document.addEventListener('DOMContentLoaded', function () {
-        console.log('Script loaded');
+document.addEventListener('DOMContentLoaded', function () {
+    // Parse JSON data from the template
+    let matiereData, matiereCommuneData;
+    try {
+        matiereData = JSON.parse(document.getElementById('matiere-data').textContent);
+        matiereCommuneData = JSON.parse(document.getElementById('matiere-commune-data').textContent);
+    } catch (e) {
+        console.error('Error parsing JSON data:', e);
+        return;
+    }
 
-        // Parse JSON data from the template
-        let matiereData, matiereCommuneData;
-        try {
-            matiereData = JSON.parse(document.getElementById('matiere-data').textContent);
-            matiereCommuneData = JSON.parse(document.getElementById('matiere-commune-data').textContent);
-            console.log('Initial matiereData:', matiereData);
-            console.log('Initial matiereCommuneData:', matiereCommuneData);
-        } catch (e) {
-            console.error('Error parsing JSON data:', e);
-            return;
+    // Element references
+    const filiereSelect = document.getElementById('id_filiere');
+    const semestreSelect = document.getElementById('id_semestre');
+    const niveauSelect = document.getElementById('id_niveau');
+    const anneeSelect = document.getElementById('id_annee');
+    const form = document.getElementById('profileForm');
+    const progressSteps = document.querySelectorAll('.progress-step');
+    const steps = document.querySelectorAll('.step');
+    const nextButtons = document.querySelectorAll('.next-step');
+    const prevButtons = document.querySelectorAll('.prev-step');
+
+    let currentStep = 1;
+
+    // Utility function to check if a select element has a valid selection
+    function hasValidSelection(selectElement) {
+        return selectElement.selectedIndex > 0;
+    }
+
+    // Update hidden fields
+    function updateHiddenFields() {
+        document.getElementById('hidden_annee').value = anneeSelect.value;
+        document.getElementById('hidden_niveau').value = niveauSelect.value;
+        document.getElementById('hidden_filiere').value = filiereSelect.value;
+        document.getElementById('hidden_semestre').value = semestreSelect.value;
+    }
+
+    // Display subjects in Step 3
+function displaySubjects() {
+    const filiereValue = filiereSelect.value;
+    const semestreValue = semestreSelect.value;
+    const niveauValue = niveauSelect.value;
+    const matiereText = document.getElementById('matiereText');
+    const matiereCommuneText = document.getElementById('matiereCommuneText');
+
+    if (filiereValue && semestreValue && niveauValue) {
+        fetch(`{% url 'roles:fetch_subjects' %}?filiere=${filiereValue}&semestre=${semestreValue}&niveau=${niveauValue}`)
+            .then(response => response.json())
+            .then(data => {
+                matiereText.textContent = data.matieres.length > 0 
+                    ? data.matieres.map(m => m.nom_matiere).join(', ') 
+                    : 'No subjects available';
+                matiereCommuneText.textContent = data.matieres_communes.length > 0 
+                    ? data.matieres_communes.map(m => m.nom_matiere_commune).join(', ') 
+                    : 'No common subjects available';
+            })
+            .catch(error => {
+                console.error('Error fetching subjects:', error);
+                matiereText.textContent = 'Error loading subjects';
+                matiereCommuneText.textContent = 'Error loading common subjects';
+            });
+    } else {
+        matiereText.textContent = 'Please complete previous steps';
+        matiereCommuneText.textContent = 'Please complete previous steps';
+    }
+}
+
+    // Update step visibility and trigger subject display
+    function updateStep(stepNumber) {
+        steps.forEach(step => step.classList.remove('active'));
+        document.getElementById(`step${stepNumber}`).classList.add('active');
+        progressSteps.forEach(step => {
+            step.classList.remove('active', 'completed');
+            const stepNum = parseInt(step.dataset.step);
+            if (stepNum < stepNumber) step.classList.add('completed');
+            else if (stepNum === stepNumber) step.classList.add('active');
+        });
+        updateHiddenFields();
+        if (stepNumber === 3) {
+            displaySubjects();
         }
+        currentStep = stepNumber;
+    }
 
-        // Get references to elements
-        const filiereSelect = document.getElementById('id_filiere');
-        const semestreSelect = document.getElementById('id_semestre');
-        const niveauSelect = document.getElementById('id_niveau');
-        const anneeSelect = document.getElementById('id_annee');
-        const matiereSelect = document.getElementById('id_matiere');
-        const matiereCommuneSelect = document.getElementById('id_matiere_commune');
-        const generateButton = document.getElementById('generateButton');
-        const form = document.getElementById('profileForm');
-        const progressSteps = document.querySelectorAll('.progress-step');
-        const steps = document.querySelectorAll('.step');
-        const nextButtons = document.querySelectorAll('.next-step');
-        const prevButtons = document.querySelectorAll('.prev-step');
-
-        // Multi-step form logic
-        let currentStep = 1;        function updateHiddenFields() {
-            document.getElementById('hidden_annee').value = anneeSelect.value;
-            document.getElementById('hidden_niveau').value = niveauSelect.value;
-            document.getElementById('hidden_filiere').value = filiereSelect.value;
-            document.getElementById('hidden_semestre').value = semestreSelect.value;
-            document.getElementById('hidden_matiere').value = matiereSelect.value;
-            document.getElementById('hidden_matiere_commune').value = matiereCommuneSelect.value;
-            // Set management form fields
-            document.getElementsByName('form-TOTAL_FORMS')[0].value = '1';
-            document.getElementsByName('form-INITIAL_FORMS')[0].value = '0';
-            document.getElementsByName('form-MIN_NUM_FORMS')[0].value = '0';
-            document.getElementsByName('form-MAX_NUM_FORMS')[0].value = '1000';
+    // Validate step inputs
+    function validateStep(stepNumber) {
+        if (stepNumber === 1) {
+            return hasValidSelection(anneeSelect) && hasValidSelection(niveauSelect);
+        } else if (stepNumber === 2) {
+            return hasValidSelection(filiereSelect) && hasValidSelection(semestreSelect);
         }
+        return true;
+    }
 
-        function updateStep(stepNumber) {
-            // Update step visibility
-            steps.forEach(step => step.classList.remove('active'));
-            document.getElementById(`step${stepNumber}`).classList.add('active');
-
-            // Update progress steps
-            progressSteps.forEach(step => {
-                step.classList.remove('active', 'completed');
-                const stepNum = parseInt(step.dataset.step);
-                if (stepNum < stepNumber) {
-                    step.classList.add('completed');
-                } else if (stepNum === stepNumber) {
-                    step.classList.add('active');
+    // Event handlers
+    nextButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            const nextStep = parseInt(this.dataset.next);
+            if (validateStep(currentStep)) {
+                updateStep(nextStep);
+            } else {
+                const missingFields = [];
+                if (currentStep === 1) {
+                    if (!hasValidSelection(anneeSelect)) missingFields.push('Academic Year');
+                    if (!hasValidSelection(niveauSelect)) missingFields.push('Level');
+                } else if (currentStep === 2) {
+                    if (!hasValidSelection(filiereSelect)) missingFields.push('Field of Study');
+                    if (!hasValidSelection(semestreSelect)) missingFields.push('Semester');
                 }
-            });
-
-            // Update hidden fields when changing steps
-            updateHiddenFields();
-            
-            currentStep = stepNumber;
-        }        // Function to check if a select element has a valid selection
-        function hasValidSelection(selectElement) {
-            return selectElement.selectedIndex > 0;  // First option is the placeholder
-        }
-
-        // Validate step inputs
-        function validateStep(stepNumber) {
-            if (stepNumber === 1) {
-                const hasAnnee = hasValidSelection(anneeSelect);
-                const hasNiveau = hasValidSelection(niveauSelect);
-                console.log('Step 1 validation:', { annee: hasAnnee, niveau: hasNiveau });
-                return hasAnnee && hasNiveau;
-            } else if (stepNumber === 2) {
-                const hasFiliere = hasValidSelection(filiereSelect);
-                const hasSemestre = hasValidSelection(semestreSelect);
-                console.log('Step 2 validation:', { filiere: hasFiliere, semestre: hasSemestre });
-                return hasFiliere && hasSemestre;
-            }
-            return true; // Step 3 has optional fields
-        }        // Next button event listeners
-        nextButtons.forEach(button => {
-            button.addEventListener('click', function () {
-                const nextStep = parseInt(this.dataset.next);
-                console.log('Attempting to move to step:', nextStep);
-                
-                if (validateStep(currentStep)) {
-                    console.log('Step validation passed');
-                    updateStep(nextStep);
-                    
-                    // Update progress steps to show completion of previous step
-                    progressSteps[currentStep - 1].classList.add('completed');
-                    
-                    if (nextStep === 3) {
-                        console.log('Preparing step 3...');
-                        // When moving to step 3, check if we can generate subjects
-                        const canGenerate = hasValidSelection(filiereSelect) && 
-                                         hasValidSelection(semestreSelect) && 
-                                         hasValidSelection(niveauSelect);
-                        generateButton.disabled = !canGenerate;
-                        
-                        if (canGenerate) {
-                            console.log('Auto-generating subjects...');
-                            generateButton.click();
-                        }
-                    }
-                } else {
-                    console.log('Step validation failed');
-                    const missingFields = [];
-                    if (currentStep === 1) {
-                        if (!hasValidSelection(anneeSelect)) missingFields.push('Academic Year');
-                        if (!hasValidSelection(niveauSelect)) missingFields.push('Level');
-                    } else if (currentStep === 2) {
-                        if (!hasValidSelection(filiereSelect)) missingFields.push('Field of Study');
-                        if (!hasValidSelection(semestreSelect)) missingFields.push('Semester');
-                    }
-                    alert(`Please complete the following fields: ${missingFields.join(', ')}`);
-                }
-            });
-        });
-
-        // Previous button event listeners
-        prevButtons.forEach(button => {
-            button.addEventListener('click', function () {
-                const prevStep = parseInt(this.dataset.prev);
-                updateStep(prevStep);
-            });
-        });
-
-        // Update matiere options
-        function updateMatiereOptions() {
-            const filiereValue = filiereSelect.value;
-            const semestreValue = semestreSelect.value;
-            const niveauValue = niveauSelect.value;
-            
-            // Clear previous state
-            matiereSelect.innerHTML = '<option value="">Select Subject</option>';
-            matiereSelect.disabled = true;
-            const existingAlert = form.querySelector('.alert-matiere');
-            if (existingAlert) {
-                existingAlert.remove();
-            }
-
-            if (filiereValue && semestreValue && niveauValue) {
-                // Create key exactly as it appears in the data
-                const key = `${filiereValue}_${semestreValue}_${niveauValue}`;
-                console.log('Searching for subjects with key:', key);
-                console.log('Available keys:', Object.keys(matiereData));
-                
-                const matieres = matiereData[key];
-                console.log('Found matiere data:', matieres);
-
-                if (matieres && matieres.length > 0) {
-                    matieres.forEach(matiere => {
-                        const opt = document.createElement('option');
-                        opt.value = String(matiere.id);  // Ensure ID is a string
-                        opt.textContent = matiere.nom;
-                        matiereSelect.appendChild(opt);
-                    });
-                    matiereSelect.disabled = false;
-                } else {
-                    const alert = document.createElement('div');
-                    alert.className = 'alert alert-warning alert-matiere mt-2';
-                    alert.textContent = 'No subjects available for this combination.';
-                    matiereSelect.parentElement.appendChild(alert);
-                }
-            }
-        }
-
-        // Update matiere commune options
-        function updateMatiereCommuneOptions() {
-            const filiereValue = filiereSelect.value;
-            const semestreValue = semestreSelect.value;
-            const niveauValue = niveauSelect.value;
-            
-            // Clear previous state
-            matiereCommuneSelect.innerHTML = '<option value="">Select Common Subject</option>';
-            matiereCommuneSelect.disabled = true;
-            const existingAlert = form.querySelector('.alert-matiere-commune');
-            if (existingAlert) {
-                existingAlert.remove();
-            }
-
-            if (semestreValue && niveauValue) {
-                const commonKey = `None_${semestreValue}_${niveauValue}`;
-                const specificKey = `${filiereValue}_${semestreValue}_${niveauValue}`;
-                
-                console.log('Searching for common subjects:', {
-                    commonKey,
-                    specificKey,
-                    available: Object.keys(matiereCommuneData)
-                });
-
-                // Get both common and filiere-specific subjects
-                const commonMatieres = matiereCommuneData[commonKey] || [];
-                const specificMatieres = matiereCommuneData[specificKey] || [];
-                const allMatieres = [...commonMatieres, ...specificMatieres];
-
-                console.log('Found common subjects:', {
-                    common: commonMatieres.length,
-                    specific: specificMatieres.length,
-                    total: allMatieres.length
-                });
-
-                if (allMatieres.length > 0) {
-                    allMatieres.forEach(matiere => {
-                        const opt = document.createElement('option');
-                        opt.value = String(matiere.id);  // Ensure ID is a string
-                        opt.textContent = matiere.nom;
-                        matiereCommuneSelect.appendChild(opt);
-                    });
-                    matiereCommuneSelect.disabled = false;
-                } else {
-                    const alert = document.createElement('div');
-                    alert.className = 'alert alert-warning alert-matiere-commune mt-2';
-                    alert.textContent = 'No common subjects available for this combination.';
-                    matiereCommuneSelect.parentElement.appendChild(alert);
-                }
-            }
-        }
-
-        // Add debug logging to selection change handlers
-        function logSelectionChange(element, value) {
-            console.log(`${element.id} changed to:`, value);
-            console.log('Current state:', {
-                filiere: filiereSelect.value,
-                semestre: semestreSelect.value,
-                niveau: niveauSelect.value,
-            });
-        }        // Update event listeners
-        filiereSelect.addEventListener('change', function() {
-            logSelectionChange(this, this.value);
-            checkGenerateButton();
-            updateHiddenFields();
-        });
-
-        semestreSelect.addEventListener('change', function() {
-            logSelectionChange(this, this.value);
-            checkGenerateButton();
-            updateHiddenFields();
-        });
-
-        niveauSelect.addEventListener('change', function() {
-            logSelectionChange(this, this.value);
-            checkGenerateButton();
-            updateHiddenFields();
-        });
-
-        anneeSelect.addEventListener('change', function() {
-            logSelectionChange(this, this.value);
-            updateHiddenFields();
-        });
-
-        matiereSelect.addEventListener('change', function() {
-            updateHiddenFields();
-        });
-
-        matiereCommuneSelect.addEventListener('change', function() {
-            updateHiddenFields();
-        });
-
-        // Generate button handler
-        generateButton.addEventListener('click', function() {
-            console.log('Generate button clicked');
-            
-            // Get current values
-            const filiereValue = filiereSelect.value;
-            const semestreValue = semestreSelect.value;
-            const niveauValue = niveauSelect.value;
-            
-            console.log('Current selection:', {
-                filiere: filiereValue,
-                semestre: semestreValue,
-                niveau: niveauValue
-            });
-
-            // Clear any existing alerts
-            document.querySelectorAll('.alert-matiere, .alert-matiere-commune').forEach(alert => alert.remove());
-            
-            // Update subjects
-            updateMatiereOptions();
-            updateMatiereCommuneOptions();
-            
-            // Show success in UI
-            if (!matiereSelect.disabled || !matiereCommuneSelect.disabled) {
-                progressSteps[2].classList.add('active');
+                alert(`Please complete the following fields: ${missingFields.join(', ')}`);
             }
         });
-
-        // Initial setup
-        checkGenerateButton();
     });
+
+    prevButtons.forEach(button => {
+        button.addEventListener('click', function () {
+            updateStep(parseInt(this.dataset.prev));
+        });
+    });
+
+    // Update hidden fields on selection change
+    [anneeSelect, niveauSelect, filiereSelect, semestreSelect].forEach(select => {
+        select.addEventListener('change', updateHiddenFields);
+    });
+});
 </script>
 
 {% if form.errors %}
 <script>
-    document.addEventListener('DOMContentLoaded', function() {
-        var myModal = new bootstrap.Modal(document.getElementById('createProfileModal'));
-        myModal.show();
-    });
+document.addEventListener('DOMContentLoaded', function() {
+    var myModal = new bootstrap.Modal(document.getElementById('createProfileModal'));
+    myModal.show();
+});
 </script>
 {% endif %}
 
-<!-- Lottie Player Library -->
-<script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
-<!-- Bootstrap JS (ensure dropdown functionality) -->
+<!-- Bootstrap JS -->
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 {% endblock %}

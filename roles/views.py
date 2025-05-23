@@ -178,55 +178,72 @@ def etudiant_dashboard(request):
     if request.user.role != 'etudiant':
         messages.error(request, 'Access denied.')
         return redirect('roles:signin')
-
     StudentProfileFormSet = formset_factory(StudentProfileForm, extra=1)
     context = _prepare_context()
-
     if request.method == 'POST':
         return _handle_post_request(request, StudentProfileFormSet, context)
-    
     context['formset'] = StudentProfileFormSet()
     return render(request, 'roles/etudiant_dashboard.html', context)
 
-def fetch_subjects(request):
-    """Fetch subjects via AJAX based on filiere, semestre, and niveau."""
-    filiere_id = request.GET.get('filiere')
-    semestre_id = request.GET.get('semestre')
-    niveau_id = request.GET.get('niveau')
-
-    matieres = _fetch_matieres(filiere_id, semestre_id, niveau_id)
-    matieres_communes = _fetch_matieres_communes(semestre_id, niveau_id)
-
-    return JsonResponse({
-        'matieres': list(matieres),
-        'matieres_communes': list(matieres_communes),
-    })
-
 def _prepare_context():
     """Prepare context data for the dashboard template."""
-    return {
+    context = {
         'annee_choices': Annee.objects.all(),
         'niveau_choices': Niveau.objects.all(),
         'filiere_choices': Filiere.objects.all(),
         'semestre_choices': Semestre.objects.all(),
         'matiere_unavailable_message': None,
     }
+    # Preload subject data for client-side display
+    matiere_data = {}
+    for filiere in Filiere.objects.all():
+        for semestre in Semestre.objects.all():
+            for niveau in Niveau.objects.all():
+                key = f"{filiere.id}_{semestre.id}_{niveau.id}"
+                matieres = Matiere.objects.filter(
+                    filiere=filiere,
+                    semestre=semestre,
+                    niveau=niveau
+                ).values('id', 'nom_matiere')
+                matiere_data[key] = [{'id': m['id'], 'nom': m['nom_matiere']} for m in matieres]
+    context['matiere_data'] = matiere_data
+
+    matiere_commune_data = {}
+    for semestre in Semestre.objects.all():
+        for niveau in Niveau.objects.all():
+            # Common subjects (filiere=None)
+            key = f"None_{semestre.id}_{niveau.id}"
+            matieres = MatiereCommune.objects.filter(
+                filiere=None,
+                semestre=semestre,
+                niveau=niveau
+            ).values('id', 'nom_matiere_commune')
+            matiere_commune_data[key] = [{'id': m['id'], 'nom': m['nom_matiere_commune']} for m in matieres]
+            # Filiere-specific common subjects
+            for filiere in Filiere.objects.all():
+                key = f"{filiere.id}_{semestre.id}_{niveau.id}"
+                matieres = MatiereCommune.objects.filter(
+                    filiere=filiere,
+                    semestre=semestre,
+                    niveau=niveau
+                ).values('id', 'nom_matiere_commune')
+                matiere_commune_data[key] = [{'id': m['id'], 'nom': m['nom_matiere_commune']} for m in matieres]
+    context['matiere_commune_data'] = matiere_commune_data
+    return context
 
 def _handle_post_request(request, StudentProfileFormSet, context):
     """Process POST request for profile creation."""
     formset = StudentProfileFormSet(request.POST)
     context['formset'] = formset
-
     _check_subjects_availability(request, formset, context)
     if context.get('matiere_unavailable_message'):
         return render(request, 'roles/etudiant_dashboard.html', context)
-    
     if not formset.is_valid():
         messages.error(request, 'Please correct the errors below.')
         return render(request, 'roles/etudiant_dashboard.html', context)
-        
     try:
         with transaction.atomic():
+            profiles_created = 0
             for form in formset:
                 if not form.cleaned_data:
                     continue
@@ -243,18 +260,35 @@ def _handle_post_request(request, StudentProfileFormSet, context):
                 profile = form.save(commit=False)
                 profile.etudiant = request.user.etudiant_profile
                 profile.save()
-                if form.cleaned_data.get('matiere'):
+                # Assign all matieres based on filiere, semestre, niveau
+                matieres = Matiere.objects.filter(
+                    filiere=profile.filiere,
+                    semestre=profile.semestre,
+                    niveau=profile.niveau
+                )
+                for matiere in matieres:
                     MatiereEtudiant.objects.create(
                         etudiant=profile.etudiant,
-                        matiere=form.cleaned_data['matiere']
+                        matiere=matiere
                     )
-                if form.cleaned_data.get('matiere_commune'):
+                # Assign all matiere_communes based on filiere, semestre, niveau
+                matiere_communes = MatiereCommune.objects.filter(
+                    filiere__in=[None, profile.filiere],
+                    semestre=profile.semestre,
+                    niveau=profile.niveau
+                )
+                for matiere_commune in matiere_communes:
                     MatiereCommuneEtudiant.objects.create(
                         etudiant=profile.etudiant,
-                        matiere_commune=form.cleaned_data['matiere_commune']
+                        matiere_commune=matiere_commune
                     )
-            messages.success(request, 'Profile created successfully.')
-            return redirect('roles:etudiant_dashboard')
+                profiles_created += 1
+            if profiles_created > 0:
+                messages.success(request, 'Profile created successfully.')
+                return redirect('roles:etudiant_dashboard')
+            else:
+                messages.error(request, 'No profiles were created.')
+                return render(request, 'roles/etudiant_dashboard.html', context)
     except Exception as e:
         logger.error(f"Error creating profile: {str(e)}")
         messages.error(request, 'An error occurred while creating the profile.')
@@ -279,8 +313,6 @@ def _check_subjects_availability(request, formset, context):
         except (ValueError, TypeError):
             pass
 
-
-
 def _fetch_matieres(filiere_id, semestre_id, niveau_id):
     """Fetch matieres based on filiere, semestre, and niveau."""
     return Matiere.objects.filter(
@@ -296,6 +328,9 @@ def _fetch_matieres_communes(semestre_id, niveau_id):
         semestre_id=semestre_id,
         niveau_id=niveau_id
     ).values('id', 'nom_matiere_commune')
+
+
+
 
 class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
     """Token generator for 15-minute activation tokens."""
@@ -504,9 +539,10 @@ def _handle_pending_user(request, username, password, pending_user):
             user.save()
             if user.role == 'etudiant' and not Etudiant.objects.filter(user=user).exists():
                 Etudiant.objects.create(user=user)
-            login(request, user)
             if 'pending_user' in request.session:
                 del request.session['pending_user']
+                request.session.modified = True
+            login(request, user)
             return redirect('roles:etudiant_dashboard')
     except Exception as e:
         logger.error(f"Error in pending user signin: {e}")
@@ -577,6 +613,7 @@ def _activate_user(request, user):
                 Etudiant.objects.create(user=user)
             if 'pending_user' in request.session:
                 del request.session['pending_user']
+                request.session.modified = True
             messages.success(request, 'Account activated! Please sign in.')
             return redirect('roles:signin')
     except Exception as e:
@@ -625,6 +662,24 @@ def _handle_resend_post_request(request):
         messages.error(request, 'An error occurred. Please try again.')
     return render(request, 'roles/resend_activation.html', {'form': form})
 
-def _create_user_from_pending(pending_user):
-    """Retrieve existing User instance from pending user data."""
-    return User.objects.get(pk=pending_user['pk'])
+def fetch_subjects(request):
+    """Fetch subjects via AJAX based on filiere, semestre, and niveau."""
+    filiere_id = request.GET.get('filiere')
+    semestre_id = request.GET.get('semestre')
+    niveau_id = request.GET.get('niveau')
+
+    matieres = Matiere.objects.filter(
+        filiere_id=filiere_id,
+        semestre_id=semestre_id,
+        niveau_id=niveau_id
+    ).values('id', 'nom_matiere')
+
+    matieres_communes = MatiereCommune.objects.filter(
+        semestre_id=semestre_id,
+        niveau_id=niveau_id
+    ).values('id', 'nom_matiere_commune')
+
+    return JsonResponse({
+        'matieres': list(matieres),
+        'matieres_communes': list(matieres_communes)
+    })
