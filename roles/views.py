@@ -31,6 +31,7 @@ from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationF
 
 logger = logging.getLogger(__name__)
 
+# ShortLivedTokenGenerator remains unchanged
 class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
     """Token generator for 15-minute activation tokens."""
     TOKEN_LIFETIME = 15 * 60  # 15 minutes in seconds
@@ -68,7 +69,6 @@ class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
 
         return super().check_token(user, token)
 
-# Initialize the token generator
 short_lived_token_generator = ShortLivedTokenGenerator()
 
 def send_activation_email(user_data, request):
@@ -112,10 +112,9 @@ def send_activation_email(user_data, request):
         logger.error(f"Failed to send activation email to {user_data.email}: {e}")
         raise  # Re-raise to handle in the view
 
-
+# etudiant_signup: Fix _handle_post_request signature
 def etudiant_signup(request):
     """Handle Etudiant self-registration."""
-    # Redirect authenticated etudiant users
     if request.user.is_authenticated and request.user.role == 'etudiant':
         return redirect(request.user.get_redirect_url())
 
@@ -126,7 +125,7 @@ def etudiant_signup(request):
     
     return render(request, 'roles/signup.html', {'form': form})
 
-def _handle_post_request(request, form):
+def _handle_post_request(request, form):  # Fixed: Added form parameter
     """Process POST request for signup."""
     if not form.is_valid():
         messages.error(request, 'Please correct the errors below.')
@@ -172,19 +171,17 @@ def _store_pending_user_in_session(request, user):
     }
     request.session['pending_user'] = pending_user
     request.session.save()
-    # End of etudiant signup
-    # Start of signin view
 
-
+# signin: No changes needed, but ensure template renders messages
 def signin(request):
     """Handle user login."""
     if request.method == 'POST':
-        return _handle_post_request(request)
+        return _handle_post_request_signin(request)  # Renamed to avoid conflict
     
     logger.debug("Rendering signin.html")
     return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
 
-def _handle_post_request(request):
+def _handle_post_request_signin(request):
     """Process POST request for signin."""
     username = request.POST.get('username')
     password = request.POST.get('password')
@@ -200,7 +197,6 @@ def _handle_pending_user(request, username, password, pending_user):
     """Process signin for a pending user."""
     logger.debug(f"Checking password for pending user {username}")
     
-    # Check if username exists with a different email
     if User.objects.filter(username=username).exclude(email=pending_user['email']).exists():
         logger.error(f"Username {username} already exists for another user")
         messages.error(request, 'Username or email already exists.')
@@ -269,6 +265,9 @@ def _finalize_user_setup(request, user):
  # Start of activate_account view
 
 
+
+
+
 def activate_account(request, uidb64, token):
     """Activate user account via email token."""
     try:
@@ -284,14 +283,6 @@ def activate_account(request, uidb64, token):
         return redirect('roles:resend_activation')
 
     return _activate_user(request, user)
-
-def resend_activation(request):
-    """Resend activation email."""
-    if request.method == 'POST':
-        return _handle_resend_post_request(request)
-    
-    form = ResendActivationForm()
-    return render(request, 'roles/resend_activation.html', {'form': form})
 
 def _get_user_from_session_and_uid(request, uidb64):
     """Retrieve user from session and decoded UID."""
@@ -315,6 +306,15 @@ def _activate_user(request, user):
         logger.error(f"IntegrityError: User {user.username} already exists")
         messages.error(request, 'User already exists.')
         return redirect('roles:resend_activation')
+
+# resend_activation: Fix _create_user_from_pending
+def resend_activation(request):
+    """Resend activation email."""
+    if request.method == 'POST':
+        return _handle_resend_post_request(request)
+    
+    form = ResendActivationForm()
+    return render(request, 'roles/resend_activation.html', {'form': form})
 
 def _handle_resend_post_request(request):
     """Process POST request for resending activation email."""
@@ -341,17 +341,8 @@ def _handle_resend_post_request(request):
     return redirect('roles:signin')
 
 def _create_user_from_pending(pending_user):
-    """Create a User instance from pending user data."""
-    user = User(
-        username=pending_user['username'],
-        email=pending_user['email'],
-        first_name=pending_user['first_name'],
-        last_name=pending_user['last_name'],
-        role=pending_user['role'],
-        is_active=pending_user['is_active']
-    )
-    user.password = pending_user['password']  # Set hashed password
-    return user
+    """Retrieve existing User instance from pending user data."""
+    return User.objects.get(pk=pending_user['pk'])  # Fixed: Retrieve saved user instead of creating new
 
 
 # End of activate_account view
@@ -496,99 +487,12 @@ def etudiant_dashboard(request):
         return redirect('roles:signin')
 
     StudentProfileFormSet = formset_factory(StudentProfileForm, extra=1)
-    matiere_unavailable_message = None
+    context = _prepare_context()
+
     if request.method == 'POST':
-        formset = StudentProfileFormSet(request.POST)
-        if formset.is_valid():
-            success = True
-            for form in formset:
-                if form.cleaned_data:
-                    try:
-                        # Check for subjects first
-                        has_subjects = Matiere.objects.filter(
-                            filiere=form.cleaned_data['filiere'],
-                            semestre=form.cleaned_data['semestre'],
-                            niveau=form.cleaned_data['niveau']
-                        ).exists()
-                        
-                        if not has_subjects:
-                            matiere_unavailable_message = "No subjects are available for this combination"
-                            form.add_error(None, matiere_unavailable_message)
-                            messages.warning(request, matiere_unavailable_message)
-                            success = False
-                            break
-
-                        # If subjects exist, create the profile
-                        profile = form.save(commit=False)
-                        profile.etudiant = request.user.etudiant_profile
-                        profile.save()
-                        
-                        # Create matiere relationship
-                        matiere = form.cleaned_data.get('matiere')
-                        if matiere:
-                            MatiereEtudiant.objects.create(
-                                etudiant=profile.etudiant,
-                                matiere=matiere,
-                                annee=profile.annee
-                            )
-                        
-                        # Create matiere_commune relationship if it exists
-                        matiere_commune = form.cleaned_data.get('matiere_commune')
-                        if matiere_commune:
-                            MatiereCommuneEtudiant.objects.create(
-                                etudiant=profile.etudiant,
-                                matiere_commune=matiere_commune,
-                                annee=profile.annee
-                            )
-                    except ValidationError as e:
-                        form.add_error(None, str(e))
-                        success = False
-                        break
-                    except IntegrityError:
-                        messages.error(request, 'A profile with this combination already exists.')
-                        form.add_error(None, 'A profile with this combination already exists.')
-                        success = False
-                        break
-
-            if success:
-                messages.success(request, 'Profiles created successfully.')
-                return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
-        else:
-            messages.error(request, 'Please correct the errors below.')
-            if all(key in formset.data for key in ['form-0-filiere', 'form-0-semestre', 'form-0-niveau']):
-                try:
-                    filiere_id = formset.data.get('form-0-filiere')
-                    semestre_id = formset.data.get('form-0-semestre')
-                    niveau_id = formset.data.get('form-0-niveau')
-                    
-                    has_subjects = Matiere.objects.filter(
-                        filiere_id=filiere_id,
-                        semestre_id=semestre_id,
-                        niveau_id=niveau_id
-                    ).exists()
-                    
-                    if not has_subjects:
-                        matiere_unavailable_message = "No subjects are available for this combination"
-                        messages.warning(request, matiere_unavailable_message)
-                except (ValueError, TypeError):
-                    pass
-    else:
-        formset = StudentProfileFormSet()
-
-    annee_choices = Annee.objects.all()
-    niveau_choices = Niveau.objects.all()
-    filiere_choices = Filiere.objects.all()
-    semestre_choices = Semestre.objects.all()
-
-    context = {
-        'formset': formset,
-        'annee_choices': annee_choices,
-        'niveau_choices': niveau_choices,
-        'filiere_choices': filiere_choices,
-        'semestre_choices': semestre_choices,
-        'matiere_unavailable_message': matiere_unavailable_message,
-    }
+        return _handle_post_request(request, StudentProfileFormSet, context)
     
+    context['formset'] = StudentProfileFormSet()
     return render(request, 'roles/etudiant_dashboard.html', context)
 
 def fetch_subjects(request):
@@ -597,21 +501,136 @@ def fetch_subjects(request):
     semestre_id = request.GET.get('semestre')
     niveau_id = request.GET.get('niveau')
 
-    matieres = Matiere.objects.filter(
+    matieres = _fetch_matieres(filiere_id, semestre_id, niveau_id)
+    matieres_communes = _fetch_matieres_communes(semestre_id, niveau_id)
+
+    return JsonResponse({
+        'matieres': list(matieres),
+        'matieres_communes': list(matieres_communes),
+    })
+
+def _prepare_context():
+    """Prepare context data for the dashboard template."""
+    return {
+        'annee_choices': Annee.objects.all(),
+        'niveau_choices': Niveau.objects.all(),
+        'filiere_choices': Filiere.objects.all(),
+        'semestre_choices': Semestre.objects.all(),
+        'matiere_unavailable_message': None,
+    }
+
+def _handle_post_request(request, StudentProfileFormSet, context):
+    """Process POST request for profile creation."""
+    formset = StudentProfileFormSet(request.POST)
+    context['formset'] = formset
+
+    if not formset.is_valid():
+        messages.error(request, 'Please correct the errors below.')
+        _check_subjects_availability(request, formset, context)
+        return render(request, 'roles/etudiant_dashboard.html', context)
+
+    success = _process_formset(request, formset, context)
+    if success:
+        messages.success(request, 'Profiles created successfully.')
+        return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
+
+    return render(request, 'roles/etudiant_dashboard.html', context)
+
+def _check_subjects_availability(request, formset, context):
+    """Check if subjects are available for the submitted combination."""
+    required_keys = ['form-0-filiere', 'form-0-semestre', 'form-0-niveau']
+    if all(key in formset.data for key in required_keys):
+        try:
+            filiere_id = formset.data.get('form-0-filiere')
+            semestre_id = formset.data.get('form-0-semestre')
+            niveau_id = formset.data.get('form-0-niveau')
+            has_subjects = Matiere.objects.filter(
+                filiere_id=filiere_id,
+                semestre_id=semestre_id,
+                niveau_id=niveau_id
+            ).exists()
+            if not has_subjects:
+                context['matiere_unavailable_message'] = "No subjects are available for this combination"
+                messages.warning(request, context['matiere_unavailable_message'])
+        except (ValueError, TypeError):
+            pass
+
+def _process_formset(request, formset, context):
+    """Process each form in the formset and create profiles."""
+    success = True
+    for form in formset:
+        if not form.cleaned_data:
+            continue
+
+        try:
+            if not _has_subjects(form.cleaned_data):
+                context['matiere_unavailable_message'] = "No subjects are available for this combination"
+                form.add_error(None, context['matiere_unavailable_message'])
+                messages.warning(request, context['matiere_unavailable_message'])
+                success = False
+                break
+
+            profile = _create_student_profile(request, form)
+            _create_matiere_relationships(request, profile, form.cleaned_data)
+
+        except ValidationError as e:
+            form.add_error(None, str(e))
+            success = False
+            break
+        except IntegrityError:
+            error_message = 'A profile with this combination already exists.'
+            messages.error(request, error_message)
+            form.add_error(None, error_message)
+            success = False
+            break
+
+    return success
+
+def _has_subjects(cleaned_data):
+    """Check if subjects exist for the given combination."""
+    return Matiere.objects.filter(
+        filiere=cleaned_data['filiere'],
+        semestre=cleaned_data['semestre'],
+        niveau=cleaned_data['niveau']
+    ).exists()
+
+def _create_student_profile(request, form):
+    """Create and save a student profile."""
+    profile = form.save(commit=False)
+    profile.etudiant = request.user.etudiant_profile
+    profile.save()
+    return profile
+
+def _create_matiere_relationships(request, profile, cleaned_data):
+    """Create relationships for matiere and matiere_commune."""
+    matiere = cleaned_data.get('matiere')
+    if matiere:
+        MatiereEtudiant.objects.create(
+            etudiant=profile.etudiant,
+            matiere=matiere,
+            annee=profile.annee
+        )
+
+    matiere_commune = cleaned_data.get('matiere_commune')
+    if matiere_commune:
+        MatiereCommuneEtudiant.objects.create(
+            etudiant=profile.etudiant,
+            matiere_commune=matiere_commune,
+            annee=profile.annee
+        )
+
+def _fetch_matieres(filiere_id, semestre_id, niveau_id):
+    """Fetch matieres based on filiere, semestre, and niveau."""
+    return Matiere.objects.filter(
         filiere_id=filiere_id,
         semestre_id=semestre_id,
         niveau_id=niveau_id
     ).values('id', 'nom_matiere')
-    
-    matieres_communes = MatiereCommune.objects.filter(
+
+def _fetch_matieres_communes(semestre_id, niveau_id):
+    """Fetch common subjects based on semestre and niveau."""
+    return MatiereCommune.objects.filter(
         filiere=None,
         semestre_id=semestre_id,
         niveau_id=niveau_id
     ).values('id', 'nom_matiere_commune')
-
-    data = {
-        'matieres': list(matieres),
-        'matieres_communes': list(matieres_communes),
-    }
-
-    return JsonResponse(data)

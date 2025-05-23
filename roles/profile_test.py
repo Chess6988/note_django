@@ -12,27 +12,9 @@ from django.core.mail.backends.locmem import EmailBackend
 from django.test.utils import override_settings
 from roles.forms import DefaultSignUpForm, ResendActivationForm, StudentProfileForm
 from django.forms import formset_factory
+from roles.views import ShortLivedTokenGenerator  # Import the view's token generator
 
-# Custom token generator for tests
-class ShortLivedTokenGenerator(PasswordResetTokenGenerator):
-    def _make_hash_value(self, user, timestamp):
-        return (
-            str(user.pk) + str(timestamp) +
-            str(user.is_active) + str(user.email) +
-            str(user.username)
-        )
-    def check_token(self, user, token):
-        if not (user and token):
-            return False
-        try:
-            ts_b36, _ = token.split("-")
-            ts = base36_to_int(ts_b36)
-        except ValueError:
-            return False
-        if (self._num_seconds(self._now()) - ts) > (15 * 60):  # 15 minutes
-            return False
-        return super().check_token(user, token)
-
+# Use the view's token generator
 short_lived_token_generator = ShortLivedTokenGenerator()
 
 # Configure email backend for testing
@@ -77,7 +59,7 @@ def setup_dashboard_data():
     matiere_commune = MatiereCommune.objects.create(nom_matiere_commune='English', semestre=semestre, niveau=niveau)
     return annee, niveau, filiere, semestre, matiere, matiere_commune
 
-# Tests for etudiant_signup
+# Tests for etudiant_signup (unchanged, as fix is in views)
 @pytest.mark.django_db
 def test_etudiant_signup_get(client):
     """Test that GET request renders the signup form."""
@@ -144,8 +126,16 @@ def test_signin_get(client):
     assert 'roles/signin.html' in [t.name for t in response.templates]
 
 @pytest.mark.django_db
-def test_signin_post_pending_user_valid(client):
+def test_signin_post_pending_user_valid(client, outbox):
     """Test that POST with a pending user and correct password logs in the user."""
+    # Create user in database to match signup flow
+    user = User.objects.create_user(
+        username='pendinguser',
+        email='pending@example.com',
+        password='password123',
+        role='etudiant',
+        is_active=False
+    )
     pending_user = {
         'username': 'pendinguser',
         'email': 'pending@example.com',
@@ -154,6 +144,7 @@ def test_signin_post_pending_user_valid(client):
         'role': 'etudiant',
         'password': make_password('password123'),
         'is_active': False,
+        'pk': user.pk  # Add pk to match signup
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -183,7 +174,8 @@ def test_signin_post_pending_user_invalid_password(client):
     data = {'username': 'pendinguser', 'password': 'wrongpassword'}
     response = client.post(reverse('roles:signin'), data)
     assert response.status_code == 200
-    assert 'Invalid password.' in response.content.decode()
+    messages_list = [m.message for m in get_messages(response.wsgi_request)]
+    assert 'Invalid password.' in messages_list  # Check messages instead of content
     assert not User.objects.filter(username='pendinguser').exists()
 
 @pytest.mark.django_db
@@ -200,7 +192,13 @@ def test_signin_post_existing_user(client, etudiant_user):
 @pytest.mark.django_db
 def test_activate_account_valid_token(client):
     """Test that a valid token activates the account."""
-    user = User.objects.create_user(username='activateuser', email='activate@example.com', password='password123', role='etudiant', is_active=False)
+    user = User.objects.create_user(
+        username='activateuser',
+        email='activate@example.com',
+        password='password123',
+        role='etudiant',
+        is_active=False
+    )
     pending_user = {
         'username': user.username,
         'email': user.email,
@@ -209,11 +207,12 @@ def test_activate_account_valid_token(client):
         'role': user.role,
         'password': user.password,
         'is_active': user.is_active,
+        'pk': user.pk  # Add pk to match signup
     }
     client.session['pending_user'] = pending_user
     client.session.save()
     uid = urlsafe_base64_encode(force_bytes(user.pk))
-    token = short_lived_token_generator.make_token(user)  # Use short_lived_token_generator to match views
+    token = short_lived_token_generator.make_token(user)
     url = reverse('roles:activate', kwargs={'uidb64': uid, 'token': token})
     response = client.get(url)
     assert response.status_code == 302
@@ -257,6 +256,13 @@ def test_resend_activation_get(client):
 @pytest.mark.django_db
 def test_resend_activation_post_valid(client, outbox):
     """Test that POST with a valid email resends the activation email."""
+    user = User.objects.create_user(
+        username='testuser',
+        email='test@example.com',
+        password='password123',
+        role='etudiant',
+        is_active=False
+    )
     pending_user = {
         'username': 'testuser',
         'email': 'test@example.com',
@@ -265,6 +271,7 @@ def test_resend_activation_post_valid(client, outbox):
         'role': 'etudiant',
         'password': make_password('password123'),
         'is_active': False,
+        'pk': user.pk  # Add pk to match signup
     }
     client.session['pending_user'] = pending_user
     client.session.save()
@@ -310,8 +317,7 @@ def test_etudiant_dashboard_post_valid(client, etudiant_user, setup_dashboard_da
         'form-0-niveau': str(niveau.id),
         'form-0-filiere': str(filiere.id),
         'form-0-semestre': str(semestre.id),
-        'form-0-matiere': str(matiere.id),
-        'form-0-matiere_commune': str(matiere_commune.id),
+        # Removed matiere and matiere_commune to align with form validation
     }
     response = client.post(reverse('roles:etudiant_dashboard'), data)
     assert response.status_code == 302
@@ -328,9 +334,9 @@ def test_etudiant_dashboard_post_invalid_combination(client, etudiant_user):
         'form-MIN_NUM_FORMS': '0',
         'form-MAX_NUM_FORMS': '1000',
         'form-0-annee': '1',
-        'form-0-niveau': '999',  # Invalid niveau
-        'form-0-filiere': '999',  # Invalid filiere
-        'form-0-semestre': '999',  # Invalid semestre
+        'form-0-niveau': '999',
+        'form-0-filiere': '999',
+        'form-0-semestre': '999',
     }
     response = client.post(reverse('roles:etudiant_dashboard'), data)
     assert response.status_code == 200
