@@ -247,6 +247,8 @@ def _handle_post_request(request, StudentProfileFormSet, context):
             for form in formset:
                 if not form.cleaned_data:
                     continue
+                
+                logger.info(f"Form cleaned data: {form.cleaned_data}")
                 existing = ProfileEtudiant.objects.filter(
                     etudiant=request.user.etudiant_profile,
                     annee=form.cleaned_data['annee'],
@@ -260,16 +262,20 @@ def _handle_post_request(request, StudentProfileFormSet, context):
                 profile = form.save(commit=False)
                 profile.etudiant = request.user.etudiant_profile
                 profile.save()
+                logger.info(f"Created profile with filiere={profile.filiere}, semestre={profile.semestre}, niveau={profile.niveau}")
+                
                 # Assign all matieres based on filiere, semestre, niveau
                 matieres = Matiere.objects.filter(
                     filiere=profile.filiere,
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 )
+                logger.info(f"Found {matieres.count()} matieres")
                 for matiere in matieres:
                     MatiereEtudiant.objects.create(
                         etudiant=profile.etudiant,
-                        matiere=matiere
+                        matiere=matiere,
+                        annee=profile.annee
                     )
                 # Assign all matiere_communes based on filiere, semestre, niveau
                 matiere_communes = MatiereCommune.objects.filter(
@@ -277,10 +283,37 @@ def _handle_post_request(request, StudentProfileFormSet, context):
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 )
+                logger.info(f"Found {matiere_communes.count()} common subjects")
+                logger.info(f"Query parameters - filiere_in:[None, {profile.filiere}], semestre:{profile.semestre}, niveau:{profile.niveau}")
+                all_common = MatiereCommune.objects.all()
+                logger.info(f"Total MatiereCommune objects: {all_common.count()}")
+                for mc in all_common:
+                    logger.info(f"MatiereCommune - id:{mc.id}, name:{mc.nom_matiere_commune}, "
+                              f"filiere:{mc.filiere}, semestre:{mc.semestre}, niveau:{mc.niveau}")
+                    # Add detailed comparison logging
+                    logger.info(f"Match check - filiere match:{mc.filiere in [None, profile.filiere]}, "
+                              f"semestre match:{mc.semestre == profile.semestre}, "
+                              f"niveau match:{mc.niveau == profile.niveau}")
+
+                # Try alternate query approach
+                logger.info("Trying alternate query...")
+                alt_query = MatiereCommune.objects.filter(
+                    filiere=None,
+                    semestre=profile.semestre,
+                    niveau=profile.niveau
+                )
+                logger.info(f"Alternate query found {alt_query.count()} results")
+                
+                # Use alternate query if it finds results
+                if alt_query.count() > 0:
+                    matiere_communes = alt_query
+                    logger.info("Using alternate query results")
                 for matiere_commune in matiere_communes:
+                    logger.info(f"Creating MatiereCommuneEtudiant for {matiere_commune}")
                     MatiereCommuneEtudiant.objects.create(
                         etudiant=profile.etudiant,
-                        matiere_commune=matiere_commune
+                        matiere_commune=matiere_commune,
+                        annee=profile.annee
                     )
                 profiles_created += 1
             if profiles_created > 0:

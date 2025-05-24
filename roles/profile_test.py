@@ -446,3 +446,180 @@ def test_fetch_subjects_invalid(client):
     assert len(data['matieres']) == 0
     assert 'matieres_communes' in data
     assert len(data['matieres_communes']) == 0
+
+@pytest.mark.django_db
+class TestEtudiantDashboard:
+    @pytest.fixture
+    def setup_data(self):
+        """Set up complete test data for dashboard testing."""
+        annee = Annee.objects.create(annee='2023-2024')
+        niveau = Niveau.objects.create(nom_niveau='L1')
+        filiere = Filiere.objects.create(nom_filiere='Informatique')
+        semestre = Semestre.objects.create(nom_semestre='S1')
+        
+        # Create regular subjects
+        matiere1 = Matiere.objects.create(
+            nom_matiere='Programming',
+            course_code='PRG101',
+            filiere=filiere,
+            semestre=semestre,
+            niveau=niveau
+        )
+        matiere2 = Matiere.objects.create(
+            nom_matiere='Databases',
+            course_code='DB101',
+            filiere=filiere,
+            semestre=semestre,
+            niveau=niveau
+        )
+        
+        # Create common subjects (with filiere=None)
+        matiere_commune1 = MatiereCommune.objects.create(
+            nom_matiere_commune='English',
+            course_code='ENG101',
+            filiere=None,  # Common subject
+            semestre=semestre,
+            niveau=niveau
+        )
+        
+        return {
+            'annee': annee,
+            'niveau': niveau,
+            'filiere': filiere,
+            'semestre': semestre,
+            'matieres': [matiere1, matiere2],
+            'matieres_communes': [matiere_commune1]  # Only include the common subject
+        }
+    
+    def test_dashboard_get_unauthorized(self, client):
+        """Test that unauthenticated users are redirected to signin."""
+        response = client.get(reverse('roles:etudiant_dashboard'))
+        assert response.status_code == 302
+        assert '/signin/' in response.url
+
+    def test_dashboard_get_wrong_role(self, client):
+        """Test that non-etudiant users are denied access."""
+        user = User.objects.create_user(username='staff', password='pass123', role='admin')
+        client.login(username='staff', password='pass123')
+        response = client.get(reverse('roles:etudiant_dashboard'))
+        assert response.status_code == 302
+        assert reverse('roles:signin') in response.url
+
+    def test_dashboard_get_success(self, client, setup_data):
+        """Test successful dashboard GET request."""
+        user = User.objects.create_user(username='student', password='pass123', role='etudiant')
+        Etudiant.objects.create(user=user)
+        client.login(username='student', password='pass123')
+        
+        response = client.get(reverse('roles:etudiant_dashboard'))
+        assert response.status_code == 200
+        context = response.context
+        
+        # Check all required context data
+        assert 'formset' in context
+        assert 'annee_choices' in context
+        assert 'niveau_choices' in context
+        assert 'filiere_choices' in context
+        assert 'semestre_choices' in context
+        assert 'matiere_data' in context
+        assert 'matiere_commune_data' in context    
+    def test_dashboard_post_success(self, client, setup_data):   
+        """Test successful profile creation via POST."""
+        user = User.objects.create_user(username='student', password='pass123', role='etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        client.login(username='student', password='pass123')
+        
+        # Delete any existing profiles and relationships
+        ProfileEtudiant.objects.filter(etudiant=etudiant).delete()
+        MatiereEtudiant.objects.filter(etudiant=etudiant).delete()
+        MatiereCommuneEtudiant.objects.filter(etudiant=etudiant).delete()
+        
+        # First, trigger subject load through the fetch_subjects endpoint
+        response = client.get(reverse('roles:fetch_subjects'), {
+            'filiere': str(setup_data['filiere'].id),
+            'semestre': str(setup_data['semestre'].id),
+            'niveau': str(setup_data['niveau'].id),
+        })
+        assert response.status_code == 200
+        json_data = response.json()
+        assert len(json_data['matieres']) > 0
+        
+        # Now submit the form with the basic profile data
+        data = {
+            'form-TOTAL_FORMS': '1',
+            'form-INITIAL_FORMS': '0',
+            'form-MIN_NUM_FORMS': '0',
+            'form-MAX_NUM_FORMS': '1000',
+            'form-0-annee': setup_data['annee'].id,
+            'form-0-niveau': setup_data['niveau'].id,
+            'form-0-filiere': setup_data['filiere'].id,
+            'form-0-semestre': setup_data['semestre'].id,
+        }
+        
+        response = client.post(reverse('roles:etudiant_dashboard'), data)
+        assert response.status_code == 302
+        assert response.url == reverse('roles:etudiant_dashboard')
+        
+        # Verify profile creation
+        profile = ProfileEtudiant.objects.get(etudiant=etudiant)
+        assert profile.annee == setup_data['annee']
+        assert profile.niveau == setup_data['niveau']
+        assert profile.filiere == setup_data['filiere']
+        assert profile.semestre == setup_data['semestre']
+        
+        # Verify subject assignments - only count matieres_communes with filiere=None
+        matiere_count = MatiereEtudiant.objects.filter(etudiant=etudiant).count()
+        matiere_commune_count = MatiereCommuneEtudiant.objects.filter(etudiant=etudiant).count()
+        assert matiere_count == len(setup_data['matieres'])
+        assert matiere_commune_count == len(setup_data['matieres_communes'])
+
+    def test_dashboard_post_duplicate_profile(self, client, setup_data):
+        """Test POST request with duplicate profile combination."""
+        user = User.objects.create_user(username='student', password='pass123', role='etudiant')
+        etudiant = Etudiant.objects.create(user=user)
+        client.login(username='student', password='pass123')
+        
+        # Create initial profile
+        ProfileEtudiant.objects.create(
+            etudiant=etudiant,
+            annee=setup_data['annee'],
+            niveau=setup_data['niveau'],
+            filiere=setup_data['filiere'],
+            semestre=setup_data['semestre']
+        )
+        
+        # Try to create duplicate profile
+        data = {
+            'form-TOTAL_FORMS': '1',
+            'form-INITIAL_FORMS': '0',
+            'form-MIN_NUM_FORMS': '0',
+            'form-MAX_NUM_FORMS': '1000',
+            'form-0-annee': setup_data['annee'].id,
+            'form-0-niveau': setup_data['niveau'].id,
+            'form-0-filiere': setup_data['filiere'].id,
+            'form-0-semestre': setup_data['semestre'].id,
+        }
+        
+        response = client.post(reverse('roles:etudiant_dashboard'), data)
+        assert response.status_code == 200  # Returns to form
+        messages = list(response.context['messages'])
+        assert any('already exists' in str(m) for m in messages)
+
+    def test_fetch_subjects_endpoint(self, client, setup_data):
+        """Test the fetch_subjects AJAX endpoint."""
+        user = User.objects.create_user(username='student', password='pass123', role='etudiant')
+        Etudiant.objects.create(user=user)
+        client.login(username='student', password='pass123')
+        
+        response = client.get(reverse('roles:fetch_subjects'), {
+            'filiere': setup_data['filiere'].id,
+            'semestre': setup_data['semestre'].id,
+            'niveau': setup_data['niveau'].id,
+        })
+        
+        assert response.status_code == 200
+        data = response.json()
+        assert 'matieres' in data
+        assert 'matieres_communes' in data
+        assert len(data['matieres']) == len(setup_data['matieres'])
+        assert len(data['matieres_communes']) == len(setup_data['matieres_communes'])
