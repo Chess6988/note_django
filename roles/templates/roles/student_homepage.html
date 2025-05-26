@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+{% load static %}
+{% load i18n %}
+
+{% block head %}
+    <link rel="stylesheet" href="{% static 'css/student_homepage.css' %}">
+    <script src="{% static 'js/student_homepage.js' %}"></script>
+{% endblock %}
+
+{% block content %}
+ 
+
+    <!-- Success Modal for Profile Save -->
+    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="successModalLabel">Succès</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    Informations enregistrées avec succès
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fermer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h1>Student Homepage</h1>
+    <p>Welcome, {{ student.user.username }}!</p>
+    <!-- Add more content as needed -->
+
+{% endblock %}
+
+{% block footer %}
+    <footer>
+        <p>© {{ current_year }} Institut de Management et de l'Entrepreneuriat (IME). All rights reserved.</p>
+    </footer>
+{% endblock %}
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.messages .success')) {
+        var successModal = new bootstrap.Modal(document.getElementById('successModal'));
+        successModal.show();
+    }
+});
+</script>

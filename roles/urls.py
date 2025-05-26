@@ -20,4 +20,5 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('fetch-subjects/', views.fetch_subjects, name='fetch_subjects'),
     path('fetch-profiles/', views.fetch_profiles, name='fetch_profiles'),
+    path('etudiant/homepage/', views.student_homepage, name='student_homepage'),  # New URL
 ]

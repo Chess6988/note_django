@@ -194,6 +194,14 @@
         </div>
     </div>
 </div>
+<!-- Pop up message -->
+{% if messages %}
+    <ul class="messages">
+        {% for message in messages %}
+            <li{% if message.tags %} class="{{ message.tags }}"{% endif %}>{{ message }}</li>
+        {% endfor %}
+    </ul>
+{% endif %}
 
 <!-- Modal for Profile Creation -->
 <div class="modal fade" id="createProfileModal" tabindex="-1" aria-labelledby="createProfileModalLabel" aria-hidden="true">
@@ -310,6 +318,24 @@
     </div>
 </div>
 
+
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="successModalLabel">Succès</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Informations enregistrées avec succès
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fermer</button>
+            </div>
+        </div>
+    </div>
+</div>
 {{ matiere_data|json_script:"matiere-data" }}
 {{ matiere_commune_data|json_script:"matiere-commune-data" }}
 
@@ -446,6 +472,13 @@ function displaySubjects() {
 document.addEventListener('DOMContentLoaded', function() {
     var myModal = new bootstrap.Modal(document.getElementById('createProfileModal'));
     myModal.show();
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    if (document.querySelector('.messages .success')) {
+        var successModal = new bootstrap.Modal(document.getElementById('successModal'));
+        successModal.show();
+    }
 });
 </script>
 {% endif %}

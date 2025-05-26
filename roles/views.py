@@ -26,7 +26,7 @@ from django.utils.http import base36_to_int
 
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
-from .models import Annee, Filiere, MatiereCommuneEtudiant, MatiereEtudiant, Niveau, Semestre, User, Invitation, Etudiant, Enseignant, Admin, ProfileEtudiant, Matiere, MatiereCommune
+from .models import Annee, EtudiantAnnee, Filiere, MatiereCommuneEtudiant, MatiereEtudiant, Niveau, Semestre, User, Invitation, Etudiant, Enseignant, Admin, ProfileEtudiant, Matiere, MatiereCommune
 from .forms import DefaultSignUpForm, PinForm, ResendActivationForm, InvitationForm, StudentProfileForm
 
 logger = logging.getLogger(__name__)
@@ -200,7 +200,7 @@ def _prepare_context():
         for semestre in Semestre.objects.all():
             for niveau in Niveau.objects.all():
                 key = f"{filiere.id}_{semestre.id}_{niveau.id}"
-                matieres = Matiere.objects.filter(
+                matieres = Matiere.objects.by_combination(
                     filiere=filiere,
                     semestre=semestre,
                     niveau=niveau
@@ -213,7 +213,7 @@ def _prepare_context():
         for niveau in Niveau.objects.all():
             # Common subjects (filiere=None)
             key = f"None_{semestre.id}_{niveau.id}"
-            matieres = MatiereCommune.objects.filter(
+            matieres = MatiereCommune.objects.by_combination(
                 filiere=None,
                 semestre=semestre,
                 niveau=niveau
@@ -222,7 +222,7 @@ def _prepare_context():
             # Filiere-specific common subjects
             for filiere in Filiere.objects.all():
                 key = f"{filiere.id}_{semestre.id}_{niveau.id}"
-                matieres = MatiereCommune.objects.filter(
+                matieres = MatiereCommune.objects.by_combination(
                     filiere=filiere,
                     semestre=semestre,
                     niveau=niveau
@@ -231,15 +231,19 @@ def _prepare_context():
     context['matiere_commune_data'] = matiere_commune_data
     return context
 
+
+
 def _handle_post_request(request, StudentProfileFormSet, context):
     """Process POST request for profile creation."""
     formset = StudentProfileFormSet(request.POST)
     context['formset'] = formset
     _check_subjects_availability(request, formset, context)
     if context.get('matiere_unavailable_message'):
+        logger.warning(f"Subjects unavailable: {context['matiere_unavailable_message']}")
         return render(request, 'roles/etudiant_dashboard.html', context)
     if not formset.is_valid():
         messages.error(request, 'Please correct the errors below.')
+        logger.error(f"Formset errors: {formset.errors}")
         return render(request, 'roles/etudiant_dashboard.html', context)
     try:
         with transaction.atomic():
@@ -247,8 +251,8 @@ def _handle_post_request(request, StudentProfileFormSet, context):
             for form in formset:
                 if not form.cleaned_data:
                     continue
-                
                 logger.info(f"Form cleaned data: {form.cleaned_data}")
+                # Check for existing profile
                 existing = ProfileEtudiant.objects.filter(
                     etudiant=request.user.etudiant_profile,
                     annee=form.cleaned_data['annee'],
@@ -258,74 +262,74 @@ def _handle_post_request(request, StudentProfileFormSet, context):
                 ).exists()
                 if existing:
                     messages.error(request, 'A profile with this combination already exists.')
+                    logger.warning("Profile already exists for this combination")
                     return render(request, 'roles/etudiant_dashboard.html', context)
+                
+                # Save profile
                 profile = form.save(commit=False)
                 profile.etudiant = request.user.etudiant_profile
                 profile.save()
-                logger.info(f"Created profile with filiere={profile.filiere}, semestre={profile.semestre}, niveau={profile.niveau}")
+                logger.info(f"Created profile: etudiant={profile.etudiant}, filiere={profile.filiere}, semestre={profile.semestre}, niveau={profile.niveau}, annee={profile.annee}")
                 
-                # Assign all matieres based on filiere, semestre, niveau
-                matieres = Matiere.objects.filter(
+                # Create EtudiantAnnee record
+                etudiant_annee, created = EtudiantAnnee.objects.get_or_create(
+                    etudiant=request.user.etudiant_profile,
+                    annee=form.cleaned_data['annee']
+                )
+                if created:
+                    logger.info(f"Created EtudiantAnnee: etudiant={profile.etudiant}, annee={profile.annee}")
+                else:
+                    logger.info(f"EtudiantAnnee already exists: etudiant={profile.etudiant}, annee={profile.annee}")
+                
+                # Assign MatiereEtudiant
+                matieres = Matiere.objects.by_combination(
                     filiere=profile.filiere,
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 )
-                logger.info(f"Found {matieres.count()} matieres")
+                logger.info(f"Found {matieres.count()} matieres for filiere={profile.filiere}, semestre={profile.semestre}, niveau={profile.niveau}")
                 for matiere in matieres:
                     MatiereEtudiant.objects.create(
                         etudiant=profile.etudiant,
                         matiere=matiere,
                         annee=profile.annee
                     )
-                # Assign all matiere_communes based on filiere, semestre, niveau
-                matiere_communes = MatiereCommune.objects.filter(
-                    filiere__in=[None, profile.filiere],
+                    logger.info(f"Created MatiereEtudiant: matiere={matiere.nom_matiere}")
+                
+                # Assign MatiereCommuneEtudiant
+                matiere_communes = MatiereCommune.objects.by_combination(
+                    filiere=profile.filiere,
                     semestre=profile.semestre,
                     niveau=profile.niveau
-                )
-                logger.info(f"Found {matiere_communes.count()} common subjects")
-                logger.info(f"Query parameters - filiere_in:[None, {profile.filiere}], semestre:{profile.semestre}, niveau:{profile.niveau}")
-                all_common = MatiereCommune.objects.all()
-                logger.info(f"Total MatiereCommune objects: {all_common.count()}")
-                for mc in all_common:
-                    logger.info(f"MatiereCommune - id:{mc.id}, name:{mc.nom_matiere_commune}, "
-                              f"filiere:{mc.filiere}, semestre:{mc.semestre}, niveau:{mc.niveau}")
-                    # Add detailed comparison logging
-                    logger.info(f"Match check - filiere match:{mc.filiere in [None, profile.filiere]}, "
-                              f"semestre match:{mc.semestre == profile.semestre}, "
-                              f"niveau match:{mc.niveau == profile.niveau}")
-
-                # Try alternate query approach
-                logger.info("Trying alternate query...")
-                alt_query = MatiereCommune.objects.filter(
+                ) | MatiereCommune.objects.by_combination(
                     filiere=None,
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 )
-                logger.info(f"Alternate query found {alt_query.count()} results")
-                
-                # Use alternate query if it finds results
-                if alt_query.count() > 0:
-                    matiere_communes = alt_query
-                    logger.info("Using alternate query results")
+                logger.info(f"Found {matiere_communes.count()} common subjects for filiere={profile.filiere or 'None'}, semestre={profile.semestre}, niveau={profile.niveau}")
                 for matiere_commune in matiere_communes:
-                    logger.info(f"Creating MatiereCommuneEtudiant for {matiere_commune}")
                     MatiereCommuneEtudiant.objects.create(
                         etudiant=profile.etudiant,
                         matiere_commune=matiere_commune,
                         annee=profile.annee
                     )
+                    logger.info(f"Created MatiereCommuneEtudiant: matiere_commune={matiere_commune.nom_matiere_commune}")
+                
                 profiles_created += 1
+            
             if profiles_created > 0:
-                messages.success(request, 'Profile created successfully.')
-                return redirect('roles:etudiant_dashboard')
+                messages.success(request, 'Informations enregistrées avec succès')
+                logger.info("Profile creation successful, redirecting to student_homepage")
+                return redirect('roles:student_homepage')
             else:
                 messages.error(request, 'No profiles were created.')
+                logger.warning("No profiles were created")
                 return render(request, 'roles/etudiant_dashboard.html', context)
     except Exception as e:
-        logger.error(f"Error creating profile: {str(e)}")
+        logger.error(f"Error creating profile: {str(e)}", exc_info=True)
         messages.error(request, 'An error occurred while creating the profile.')
         return render(request, 'roles/etudiant_dashboard.html', context)
+    
 
 def _check_subjects_availability(request, formset, context):
     """Check if subjects are available for the submitted combination."""
@@ -335,15 +339,27 @@ def _check_subjects_availability(request, formset, context):
             filiere_id = formset.data.get('form-0-filiere')
             semestre_id = formset.data.get('form-0-semestre')
             niveau_id = formset.data.get('form-0-niveau')
-            has_subjects = Matiere.objects.filter(
+            # Check Matiere availability
+            has_matieres = Matiere.objects.by_combination(
                 filiere_id=filiere_id,
                 semestre_id=semestre_id,
                 niveau_id=niveau_id
             ).exists()
-            if not has_subjects:
-                context['matiere_unavailable_message'] = "No subjects are available for this combination"
+            # Check MatiereCommune availability (filiere-specific or filiere=None)
+            has_matieres_communes = MatiereCommune.objects.by_combination(
+                filiere_id=filiere_id,
+                semestre_id=semestre_id,
+                niveau_id=niveau_id
+            ).exists() or MatiereCommune.objects.by_combination(
+                filiere_id=None,
+                semestre_id=semestre_id,
+                niveau_id=niveau_id
+            ).exists()
+            if not (has_matieres or has_matieres_communes):
+                context['matiere_unavailable_message'] = "No subjects or common subjects are available for this combination"
                 messages.warning(request, context['matiere_unavailable_message'])
-        except (ValueError, TypeError):
+        except (ValueError, TypeError) as e:
+            logger.error(f"Invalid data in subjects availability check: {str(e)}")
             pass
 
 def _fetch_matieres(filiere_id, semestre_id, niveau_id):
@@ -361,6 +377,20 @@ def _fetch_matieres_communes(semestre_id, niveau_id):
         semestre_id=semestre_id,
         niveau_id=niveau_id
     ).values('id', 'nom_matiere_commune')
+
+
+
+@login_required
+def student_homepage(request):
+    """Render the student homepage."""
+    if request.user.role != 'etudiant':
+        messages.error(request, 'Access denied.')
+        return redirect('roles:signin')
+    context = {
+        'student': request.user.etudiant_profile,
+        'current_year': Annee.get_current_academic_year_str(),
+    }
+    return render(request, 'roles/student_homepage.html', context)
 
 
 
