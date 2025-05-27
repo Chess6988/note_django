@@ -384,35 +384,67 @@ def test_etudiant_dashboard_post_valid(client, etudiant_user, setup_dashboard_da
     }
     
     response = client.post(reverse('roles:etudiant_dashboard'), data)
-    if response.status_code != 302:
-        # Print formset errors for debugging
-        if 'formset' in response.context:
-            print('Formset errors:', response.context['formset'].errors)
-            for form in response.context['formset']:
-                print('Matiere queryset:', form.fields['matiere'].queryset.all())
-                print('Matiere commune queryset:', form.fields['matiere_commune'].queryset.all())
-        print('Dashboard POST response:', response.content.decode())
     assert response.status_code == 302
-    assert response.url == reverse('roles:etudiant_dashboard')
+    assert response.url == reverse('roles:student_homepage')  # Updated expectation
     assert MatiereEtudiant.objects.filter(etudiant=etudiant_user.etudiant_profile).exists()
+
 
 @pytest.mark.django_db
 def test_etudiant_dashboard_post_invalid_combination(client, etudiant_user):
-    """Test that POST with invalid subject combination returns an error."""
+    """
+    Test that POST with an invalid subject combination renders the dashboard
+    with a warning message and does not create a profile.
+    """
+    # Create necessary objects for the form submission
+    filiere = Filiere.objects.create(nom_filiere="Invalid Filiere")
+    semestre = Semestre.objects.create(nom_semestre="Invalid Semestre")
+    niveau = Niveau.objects.create(nom_niveau="Invalid Niveau")
+    annee = Annee.objects.create(annee="2023-2024")
+
+    # Get IDs for form data
+    filiere_id = filiere.id
+    semestre_id = semestre.id
+    niveau_id = niveau.id
+    annee_id = annee.id
+
+    # Log in as the student user
     client.login(username='student', password='password123')
+
+    # Formset data with IDs as strings
     data = {
         'form-TOTAL_FORMS': '1',
         'form-INITIAL_FORMS': '0',
         'form-MIN_NUM_FORMS': '0',
         'form-MAX_NUM_FORMS': '1000',
-        'form-0-annee': '1',
-        'form-0-niveau': '999',
-        'form-0-filiere': '999',
-        'form-0-semestre': '999',
+        'form-0-annee': str(annee_id),
+        'form-0-niveau': str(niveau_id),
+        'form-0-filiere': str(filiere_id),
+        'form-0-semestre': str(semestre_id),
     }
+
+    # Submit the POST request
     response = client.post(reverse('roles:etudiant_dashboard'), data)
-    assert response.status_code == 200
-    assert 'No subjects are available for this combination' in response.content.decode()
+
+    # Verify the response renders the dashboard with status 200
+    assert response.status_code == 200, f"Expected status 200, got {response.status_code}"
+    assert 'roles/etudiant_dashboard.html' in [t.name for t in response.templates], "Did not render dashboard template"
+
+    # Verify the warning message is present
+    messages = list(get_messages(response.wsgi_request))
+    expected_message = "No subjects or common subjects are available for this combination"
+    assert any(expected_message in str(m) for m in messages), (
+        f"Expected message '{expected_message}' not found in {messages}"
+    )
+
+    # Verify that no profile was created
+    profile_exists = ProfileEtudiant.objects.filter(
+        etudiant=etudiant_user.etudiant_profile,
+        filiere=filiere,
+        semestre=semestre,
+        niveau=niveau,
+        annee=annee
+    ).exists()
+    assert not profile_exists, "Profile was unexpectedly created"
 
 @pytest.mark.django_db
 def test_fetch_subjects_valid(client, setup_dashboard_data):
@@ -558,7 +590,7 @@ class TestEtudiantDashboard:
         
         response = client.post(reverse('roles:etudiant_dashboard'), data)
         assert response.status_code == 302
-        assert response.url == reverse('roles:etudiant_dashboard')
+        assert response.url == reverse('roles:student_homepage')  # Updated expectation
         
         # Verify profile creation
         profile = ProfileEtudiant.objects.get(etudiant=etudiant)

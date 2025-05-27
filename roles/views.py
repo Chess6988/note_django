@@ -339,28 +339,32 @@ def _check_subjects_availability(request, formset, context):
             filiere_id = formset.data.get('form-0-filiere')
             semestre_id = formset.data.get('form-0-semestre')
             niveau_id = formset.data.get('form-0-niveau')
+            # Retrieve model instances
+            filiere = Filiere.objects.get(id=filiere_id)
+            semestre = Semestre.objects.get(id=semestre_id)
+            niveau = Niveau.objects.get(id=niveau_id)
             # Check Matiere availability
             has_matieres = Matiere.objects.by_combination(
-                filiere_id=filiere_id,
-                semestre_id=semestre_id,
-                niveau_id=niveau_id
+                filiere=filiere,
+                semestre=semestre,
+                niveau=niveau
             ).exists()
             # Check MatiereCommune availability (filiere-specific or filiere=None)
             has_matieres_communes = MatiereCommune.objects.by_combination(
-                filiere_id=filiere_id,
-                semestre_id=semestre_id,
-                niveau_id=niveau_id
+                filiere=filiere,
+                semestre=semestre,
+                niveau=niveau
             ).exists() or MatiereCommune.objects.by_combination(
-                filiere_id=None,
-                semestre_id=semestre_id,
-                niveau_id=niveau_id
+                filiere=None,
+                semestre=semestre,
+                niveau=niveau
             ).exists()
+            logger.info(f"has_matieres: {has_matieres}, has_matieres_communes: {has_matieres_communes}")
             if not (has_matieres or has_matieres_communes):
                 context['matiere_unavailable_message'] = "No subjects or common subjects are available for this combination"
                 messages.warning(request, context['matiere_unavailable_message'])
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError, Filiere.DoesNotExist, Semestre.DoesNotExist, Niveau.DoesNotExist) as e:
             logger.error(f"Invalid data in subjects availability check: {str(e)}")
-            pass
 
 def _fetch_matieres(filiere_id, semestre_id, niveau_id):
     """Fetch matieres based on filiere, semestre, and niveau."""
