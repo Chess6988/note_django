@@ -16,10 +16,10 @@ class MatiereManager(models.Manager):
 
 # Custom manager for MatiereCommune
 class MatiereCommuneManager(models.Manager):
-    def by_combination(self, filiere, semestre, niveau):
+    def by_combination(self,  semestre, niveau):
         """Filter MatiereCommune instances by filiere, semestre, and niveau with optimized queries."""
-        return self.select_related('filiere', 'semestre', 'niveau').filter(
-            filiere=filiere, semestre=semestre, niveau=niveau
+        return self.select_related(  'semestre', 'niveau').filter(
+             semestre=semestre, niveau=niveau
         )
 
 class User(AbstractUser):

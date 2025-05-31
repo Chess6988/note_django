@@ -364,6 +364,26 @@ document.addEventListener('DOMContentLoaded', function () {
 
     let currentStep = 1;
 
+    // CSRF Token Handling [ADDED]
+    function getCsrfToken() {
+        const tokenElement = document.querySelector('input[name="csrfmiddlewaretoken"]');
+        return tokenElement ? tokenElement.value : '';
+    }
+
+    function refreshCsrfToken() {
+        fetch("{% url 'roles:get_csrf_token' %}", {
+            method: 'GET',
+            credentials: 'same-origin'
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.csrfToken) {
+                document.querySelector('input[name="csrfmiddlewaretoken"]').value = data.csrfToken;
+            }
+        })
+        .catch(error => console.error('Error refreshing CSRF token:', error));
+    }
+
     // Utility function to check if a select element has a valid selection
     function hasValidSelection(selectElement) {
         return selectElement.selectedIndex > 0;
@@ -378,7 +398,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     // Display subjects in Step 3
-function displaySubjects() {
+    function displaySubjects() {
     const filiereValue = filiereSelect.value;
     const semestreValue = semestreSelect.value;
     const niveauValue = niveauSelect.value;
@@ -386,19 +406,29 @@ function displaySubjects() {
     const matiereCommuneText = document.getElementById('matiereCommuneText');
 
     if (filiereValue && semestreValue && niveauValue) {
+        // Fetch regular subjects with filiere
         fetch(`{% url 'roles:fetch_subjects' %}?filiere=${filiereValue}&semestre=${semestreValue}&niveau=${niveauValue}`)
             .then(response => response.json())
             .then(data => {
                 matiereText.textContent = data.matieres.length > 0 
                     ? data.matieres.map(m => m.nom_matiere).join(', ') 
                     : 'No subjects available';
+            })
+            .catch(error => {
+                console.error('Error fetching subjects:', error);
+                matiereText.textContent = 'Error loading subjects';
+            });
+
+        // Fetch common subjects without filiere
+        fetch(`{% url 'roles:fetch_subjects' %}?semestre=${semestreValue}&niveau=${niveauValue}`)
+            .then(response => response.json())
+            .then(data => {
                 matiereCommuneText.textContent = data.matieres_communes.length > 0 
                     ? data.matieres_communes.map(m => m.nom_matiere_commune).join(', ') 
                     : 'No common subjects available';
             })
             .catch(error => {
-                console.error('Error fetching subjects:', error);
-                matiereText.textContent = 'Error loading subjects';
+                console.error('Error fetching common subjects:', error);
                 matiereCommuneText.textContent = 'Error loading common subjects';
             });
     } else {
@@ -414,8 +444,11 @@ function displaySubjects() {
         progressSteps.forEach(step => {
             step.classList.remove('active', 'completed');
             const stepNum = parseInt(step.dataset.step);
-            if (stepNum < stepNumber) step.classList.add('completed');
-            else if (stepNum === stepNumber) step.classList.add('active');
+            if (stepNum < stepNumber) {
+                step.classList.add('completed');
+            } else if (stepNum === stepNumber) {
+                step.classList.add('active');
+            }
         });
         updateHiddenFields();
         if (stepNumber === 3) {
@@ -443,11 +476,19 @@ function displaySubjects() {
             } else {
                 const missingFields = [];
                 if (currentStep === 1) {
-                    if (!hasValidSelection(anneeSelect)) missingFields.push('Academic Year');
-                    if (!hasValidSelection(niveauSelect)) missingFields.push('Level');
+                    if (!hasValidSelection(anneeSelect)) {
+                        missingFields.push('Academic Year');
+                    }
+                    if (!hasValidSelection(niveauSelect)) {
+                        missingFields.push('Level');
+                    }
                 } else if (currentStep === 2) {
-                    if (!hasValidSelection(filiereSelect)) missingFields.push('Field of Study');
-                    if (!hasValidSelection(semestreSelect)) missingFields.push('Semester');
+                    if (!hasValidSelection(filiereSelect)) {
+                        missingFields.push('Field of Study');
+                    }
+                    if (!hasValidSelection(semestreSelect)) {
+                        missingFields.push('Semester');
+                    }
                 }
                 alert(`Please complete the following fields: ${missingFields.join(', ')}`);
             }
@@ -460,10 +501,22 @@ function displaySubjects() {
         });
     });
 
-    // Update hidden fields on selection change
+    // Update hidden fields on selection change and refresh CSRF token [MODIFIED]
     [anneeSelect, niveauSelect, filiereSelect, semestreSelect].forEach(select => {
-        select.addEventListener('change', updateHiddenFields);
+        select.addEventListener('change', function () {
+            updateHiddenFields();
+            refreshCsrfToken(); // [ADDED]
+        });
     });
+
+    // Form submission handler [ADDED]
+    form.addEventListener('submit', function (event) {
+        updateHiddenFields();
+        refreshCsrfToken();
+    });
+
+    // Initial CSRF token refresh on page load [ADDED]
+    refreshCsrfToken();
 });
 </script>
 

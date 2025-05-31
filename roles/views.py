@@ -23,7 +23,7 @@ from django.core.serializers.json import DjangoJSONEncoder
 from django.db.models import Q
 from django.forms import formset_factory
 from django.utils.http import base36_to_int
-
+from django.middleware.csrf import get_token
 
 from roles_project.settings import DEFAULT_FROM_EMAIL
 from .models import Annee, EtudiantAnnee, Filiere, MatiereCommuneEtudiant, MatiereEtudiant, Niveau, Semestre, User, Invitation, Etudiant, Enseignant, Admin, ProfileEtudiant, Matiere, MatiereCommune
@@ -208,29 +208,21 @@ def _prepare_context():
                 matiere_data[key] = [{'id': m['id'], 'nom': m['nom_matiere']} for m in matieres]
     context['matiere_data'] = matiere_data
 
+    # Initialize matiere_commune_data dictionary
     matiere_commune_data = {}
     for semestre in Semestre.objects.all():
         for niveau in Niveau.objects.all():
-            # Common subjects (filiere=None)
-            key = f"None_{semestre.id}_{niveau.id}"
+            key = f"{semestre.id}_{niveau.id}"
             matieres = MatiereCommune.objects.by_combination(
-                filiere=None,
                 semestre=semestre,
                 niveau=niveau
             ).values('id', 'nom_matiere_commune')
-            matiere_commune_data[key] = [{'id': m['id'], 'nom': m['nom_matiere_commune']} for m in matieres]
-            # Filiere-specific common subjects
-            for filiere in Filiere.objects.all():
-                key = f"{filiere.id}_{semestre.id}_{niveau.id}"
-                matieres = MatiereCommune.objects.by_combination(
-                    filiere=filiere,
-                    semestre=semestre,
-                    niveau=niveau
-                ).values('id', 'nom_matiere_commune')
-                matiere_commune_data[key] = [{'id': m['id'], 'nom': m['nom_matiere_commune']} for m in matieres]
+            matiere_commune_data[key] = [
+                {'id': m['id'], 'nom': m['nom_matiere_commune']} for m in matieres
+            ]
+
     context['matiere_commune_data'] = matiere_commune_data
     return context
-
 
 
 def _handle_post_request(request, StudentProfileFormSet, context):
@@ -298,11 +290,11 @@ def _handle_post_request(request, StudentProfileFormSet, context):
                 
                 # Assign MatiereCommuneEtudiant
                 matiere_communes = MatiereCommune.objects.by_combination(
-                    filiere=profile.filiere,
+                
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 ) | MatiereCommune.objects.by_combination(
-                    filiere=None,
+                    
                     semestre=profile.semestre,
                     niveau=profile.niveau
                 )
@@ -351,11 +343,11 @@ def _check_subjects_availability(request, formset, context):
             ).exists()
             # Check MatiereCommune availability (filiere-specific or filiere=None)
             has_matieres_communes = MatiereCommune.objects.by_combination(
-                filiere=filiere,
+                
                 semestre=semestre,
                 niveau=niveau
             ).exists() or MatiereCommune.objects.by_combination(
-                filiere=None,
+                
                 semestre=semestre,
                 niveau=niveau
             ).exists()
@@ -365,6 +357,7 @@ def _check_subjects_availability(request, formset, context):
                 messages.warning(request, context['matiere_unavailable_message'])
         except (ValueError, TypeError, Filiere.DoesNotExist, Semestre.DoesNotExist, Niveau.DoesNotExist) as e:
             logger.error(f"Invalid data in subjects availability check: {str(e)}")
+
 
 def _fetch_matieres(filiere_id, semestre_id, niveau_id):
     """Fetch matieres based on filiere, semestre, and niveau."""
@@ -377,7 +370,7 @@ def _fetch_matieres(filiere_id, semestre_id, niveau_id):
 def _fetch_matieres_communes(semestre_id, niveau_id):
     """Fetch common subjects based on semestre and niveau."""
     return MatiereCommune.objects.filter(
-        filiere=None,
+        
         semestre_id=semestre_id,
         niveau_id=niveau_id
     ).values('id', 'nom_matiere_commune')
@@ -395,6 +388,12 @@ def student_homepage(request):
         'current_year': Annee.get_current_academic_year_str(),
     }
     return render(request, 'roles/student_homepage.html', context)
+
+
+
+def get_csrf_token(request):
+    """Return a CSRF token for the current request."""
+    return JsonResponse({'csrfToken': get_token(request)})
 
 
 

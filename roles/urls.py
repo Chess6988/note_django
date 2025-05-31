@@ -21,4 +21,6 @@ urlpatterns = [
     path('fetch-subjects/', views.fetch_subjects, name='fetch_subjects'),
     path('fetch-profiles/', views.fetch_profiles, name='fetch_profiles'),
     path('etudiant/homepage/', views.student_homepage, name='student_homepage'),  # New URL
+    path('get-csrf-token/', views.get_csrf_token, name='get_csrf_token'),  #
+
 ]

@@ -1,50 +1,119 @@
 {% extends 'base.html' %}
 {% load static %}
-{% load i18n %}
-
-{% block head %}
-    <link rel="stylesheet" href="{% static 'css/student_homepage.css' %}">
-    <script src="{% static 'js/student_homepage.js' %}"></script>
-{% endblock %}
 
 {% block content %}
- 
-
-    <!-- Success Modal for Profile Save -->
-    <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="successModalLabel">Succès</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    Informations enregistrées avec succès
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fermer</button>
-                </div>
+<!-- Success Modal -->
+<div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="successModalLabel">Succès</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                Informations enregistrées avec succès.
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-bs-dismiss="modal">Fermer</button>
             </div>
         </div>
     </div>
+</div>
 
-    <h1>Student Homepage</h1>
-    <p>Welcome, {{ student.user.username }}!</p>
-    <!-- Add more content as needed -->
+<!-- Header Navigation -->
+<header class="bg-primary text-white py-3">
+    <div class="container">
+        <div class="d-flex flex-column flex-md-row align-items-center justify-content-between">
+            <div class="d-flex align-items-center mb-2 mb-md-0">
+                <img src="{% static 'images/ime-logo.png' %}" alt="IME Logo" class="h-10 me-2" onerror="this.src='https://via.placeholder.com/40';">
+                <h1 class="h5 mb-0">Gestion des Notes D'IME</h1>
+            </div>
+            <nav class="nav">
+                <a href="{% url 'roles:student_homepage' %}" class="nav-link text-white">Tableau de Bord</a>
+                <a href="{% url 'roles:etudiant_dashboard' %}" class="nav-link text-white">Profil</a>
+                <a href="{% url 'roles:logout' %}" class="nav-link text-white">Déconnexion</a>
+            </nav>
+        </div>
+    </div>
+</header>
 
-{% endblock %}
+<main class="py-4">
+    <!-- Welcome Section -->
+    <section class="mb-4">
+        <h1 class="h3 text-primary">Bienvenue, {{ student.user.username|title }} !</h1>
+        <p class="text-muted">Institut Management et Entrepreneuriat, Yaoundé - Année Académique {{ current_year }}</p>
+    </section>
+
+    <!-- Profile Section -->
+    <section class="mb-4">
+        <h2 class="h5 text-primary mb-3">Profil Académique</h2>
+        <div class="row">
+            <div class="col-md-6">
+                <p><strong>Nom:</strong> {{ student.user.username|title }}</p>
+                <p><strong>Filière:</strong> {{ student.profileetudiant_set.last.filiere.nom_filiere }}</p>
+            </div>
+            <div class="col-md-6">
+                <p><strong>Niveau:</strong> {{ student.profileetudiant_set.last.niveau.nom_niveau }}</p>
+                <p><strong>Semestre:</strong> {{ student.profileetudiant_set.last.semestre.nom_semestre }}</p>
+            </div>
+        </div>
+        <p><strong>Année Académique:</strong> {{ current_year }}</p>
+        <a href="{% url 'roles:etudiant_dashboard' %}" class="btn btn-primary">Modifier le Profil</a>
+    </section>
+
+    <!-- Subjects Table -->
+    <section class="mb-4">
+        <h2 class="h5 text-primary mb-3">Matières Inscrites</h2>
+        <div class="table-responsive">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Code</th>
+                        <th>Matière</th>
+                        <th>Type</th>
+                        <th>Semestre</th>
+                        <th>Niveau</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for matiere in student.matiereetudiant_set.all %}
+                    <tr>
+                        <td>{{ matiere.matiere.course_code }}</td>
+                        <td>{{ matiere.matiere.nom_matiere }}</td>
+                        <td>Spécifique</td>
+                        <td>{{ matiere.matiere.semestre.nom_semestre }}</td>
+                        <td>{{ matiere.matiere.niveau.nom_niveau }}</td>
+                        <td>-</td>
+                    </tr>
+                    {% endfor %}
+                    {% for matiere_commune in student.matierecommuneetudiant_set.all %}
+                    <tr>
+                        <td>{{ matiere_commune.matiere_commune.course_code }}</td>
+                        <td>{{ matiere_commune.matiere_commune.nom_matiere_commune }}</td>
+                        <td>Commun</td>
+                        <td>{{ matiere_commune.matiere_commune.semestre.nom_semestre }}</td>
+                        <td>{{ matiere_commune.matiere_commune.niveau.nom_niveau }}</td>
+                        <td>-</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <!-- Announcements -->
+    <section>
+        <h2 class="h5 text-primary mb-3">Annonces</h2>
+        <p class="text-muted">Chargement des annonces...</p>
+    </section>
+</main>
 
 {% block footer %}
-    <footer>
-        <p>© {{ current_year }} Institut de Management et de l'Entrepreneuriat (IME). All rights reserved.</p>
-    </footer>
+<footer class="bg-primary text-white py-3">
+    <div class="container text-center">
+        <p class="mb-0">© {{ current_year }} Institut de Management et de l'Entrepreneuriat (IME). Tous droits réservés.</p>
+        <p class="mb-0">Contact : info@ime.cm | +237 123 456 789</p>
+    </div>
+</footer>
 {% endblock %}
-
-<script>
-document.addEventListener('DOMContentLoaded', function() {
-    if (document.querySelector('.messages .success')) {
-        var successModal = new bootstrap.Modal(document.getElementById('successModal'));
-        successModal.show();
-    }
-});
-</script>
