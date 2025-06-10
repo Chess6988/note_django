@@ -488,20 +488,13 @@ def etudiant_signup(request):
 def _handle_post_request_signup(request, form, context):
     """Process POST request for signup."""
     if not form.is_valid():
-        if 'username' in form.errors and any(
-            "A user with that username already exists." in err for err in form.errors['username']
-        ):
-            messages.error(request, 'Username already exists')
-        else:
-            messages.error(request, 'Please correct the errors below.')
+        for error in form.non_field_errors():
+            messages.error(request, error)
+        for field in form:
+            for error in field.errors:
+                messages.error(request, f"{field.label}: {error}")
         return render(request, 'roles/signup.html', context)
     
-    username = form.cleaned_data['username']
-    if User.objects.filter(username=username).exists():
-        form.add_error('username', 'Username already exists')
-        messages.error(request, 'Username already exists')
-        return render(request, 'roles/signup.html', context)
-
     try:
         user = _create_pending_user(form)
         _store_pending_user_in_session(request, user)

@@ -174,7 +174,21 @@ class DefaultSignUpForm(UserCreationForm):
         super().__init__(*args, **kwargs)
         self.fields['password1'].widget.attrs.update({'class': 'form-control', 'aria-label': 'Password'})
         self.fields['password2'].widget.attrs.update({'class': 'form-control', 'aria-label': 'Confirm Password'})
-
+    
+    def clean(self):
+        cleaned_data = super().clean()
+        email = cleaned_data.get('email')
+        first_name = cleaned_data.get('first_name')
+        last_name = cleaned_data.get('last_name')
+        
+        if email and User.objects.filter(email=email).exists():
+            self.add_error('email', 'A user with this email already exists.')
+        if first_name and last_name and User.objects.filter(first_name=first_name, last_name=last_name).exists():
+            self.add_error(None, 'A user with this first and last name already exists.')
+        
+        return cleaned_data
+    
+    
 class PinForm(forms.Form):
     pin = forms.CharField(
         max_length=6,

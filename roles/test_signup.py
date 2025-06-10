@@ -402,7 +402,10 @@ class TestResendActivation:
         
         messages = list(get_messages(response.wsgi_request))
         assert any('No pending account found' in m.message for m in messages)
-    
+
+
+
+
     def test_resend_post_active_user(self, client, valid_signup_data):
         """Test resend activation for already active user."""
         user = User.objects.create_user(
@@ -414,19 +417,19 @@ class TestResendActivation:
         )
         
         # Store in session to simulate the real flow
-        session = client.session
-        session['pending_user'] = {
+        django_session = client.session  # Using a unique name to avoid potential conflicts
+        django_session['pending_user'] = {
             'username': user.username,
             'email': user.email,
             'role': user.role,
             'pk': user.pk,
             'is_active': True
         }
-        session.save()
+        django_session.save()
         
         url = reverse('roles:resend_activation')
-        response = client.post(url, {'email': valid_signup_data['email']})
+        response = client.post(url, {'email': valid_signup_data['email']}, follow=True)
         
         assert response.status_code == 200
-        messages = list(get_messages(response.wsgi_request))
-        assert any('This account is already active' in m.message for m in messages)
+        messages = list(response.context['messages'])
+        assert any('This account is already active' in str(m) for m in messages)
