@@ -70,7 +70,7 @@
                     <tr>
                         <th>Code</th>
                         <th>Matière</th>
-                        <th>Type</th>
+                        <th>Type de matiere</th>
                         <th>Semestre</th>
                         <th>Niveau</th>
                         <th>Notes</th>
@@ -117,3 +117,22 @@
     </div>
 </footer>
 {% endblock %}
+{% endblock %}
+
+<script>
+// Auto-dismiss Bootstrap alerts after 10 seconds
+window.addEventListener('DOMContentLoaded', function() {
+    var alerts = document.querySelectorAll('.alert');
+    alerts.forEach(function(alert) {
+        setTimeout(function() {
+            if (alert.classList.contains('show')) {
+                // For Bootstrap 5 alerts with fade
+                alert.classList.remove('show');
+                setTimeout(function() { alert.style.display = 'none'; }, 150);
+            } else {
+                alert.style.display = 'none';
+            }
+        }, 10000); // 10 seconds
+    });
+});
+</script>

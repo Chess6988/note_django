@@ -371,7 +371,7 @@ document.addEventListener('DOMContentLoaded', function () {
     }
 
     function refreshCsrfToken() {
-        fetch("{% url 'roles:get_csrf_token' %}", {
+        return fetch("{% url 'roles:get_csrf_token' %}", {
             method: 'GET',
             credentials: 'same-origin'
         })
@@ -381,7 +381,9 @@ document.addEventListener('DOMContentLoaded', function () {
                 document.querySelector('input[name="csrfmiddlewaretoken"]').value = data.csrfToken;
             }
         })
-        .catch(error => console.error('Error refreshing CSRF token:', error));
+        .catch(error => {
+            console.error('Error refreshing CSRF token:', error);
+        });
     }
 
     // Utility function to check if a select element has a valid selection
@@ -509,10 +511,16 @@ document.addEventListener('DOMContentLoaded', function () {
         });
     });
 
-    // Form submission handler [ADDED]
+    // Form submission handler [FIXED: ensure CSRF token is refreshed before submit]
     form.addEventListener('submit', function (event) {
+        event.preventDefault(); // Prevent default submit
         updateHiddenFields();
-        refreshCsrfToken();
+        refreshCsrfToken().then(function() {
+            form.submit();
+        }).catch(function() {
+            // If CSRF refresh fails, still try to submit (fallback)
+            form.submit();
+        });
     });
 
     // Initial CSRF token refresh on page load [ADDED]
