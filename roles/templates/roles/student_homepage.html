@@ -10,21 +10,50 @@
             ☰ Menu
         </button>
 
-        <!-- Sidebar Navigation -->
-        <aside id="sidebarMenu" class="collapse d-md-flex col-12 col-md-3 col-lg-2 bg-primary text-white flex-column p-3">
-           
-            <nav class="nav nav-pills flex-column">
-                <a href="{% url 'roles:student_homepage' %}" class="nav-link text-white mb-2">
-                    <i class="bi bi-speedometer2 me-2"></i>Tableau de Bord
-                </a>
-                <a href="{% url 'roles:etudiant_dashboard' %}" class="nav-link text-white mb-2">
-                    <i class="bi bi-person-circle me-2"></i>Profil
-                </a>
-                <a href="{% url 'roles:logout' %}" class="nav-link text-white">
-                    <i class="bi bi-box-arrow-right me-2"></i>Déconnexion
-                </a>
-            </nav>
-        </aside>
+      <aside id="sidebarMenu" class="collapse d-md-flex col-12 col-md-3 col-lg-2 bg-primary text-white flex-column p-3 shadow-sm" style="border-radius: 0 8px 8px 0;">
+    <nav class="nav nav-pills flex-column gap-1">
+
+        <a href="{% url 'roles:student_homepage' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
+           style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
+           onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
+           onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
+            <i class="bi bi-speedometer2 me-2 fs-5"
+               style="transition: transform 0.2s ease;"
+               onmouseover="this.style.transform='scale(1.1)'"
+               onmouseout="this.style.transform=''">
+            </i>
+            <span>Tableau de Bord</span>
+        </a>
+
+        <a href="{% url 'roles:etudiant_dashboard' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
+           style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
+           onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
+           onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
+            <i class="bi bi-person-circle me-2 fs-5"
+               style="transition: transform 0.2s ease;"
+               onmouseover="this.style.transform='scale(1.1)'"
+               onmouseout="this.style.transform=''">
+            </i>
+            <span>Profil</span>
+        </a>
+
+        <a href="{% url 'roles:logout' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
+           style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
+           onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
+           onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
+            <i class="bi bi-box-arrow-right me-2 fs-5"
+               style="transition: transform 0.2s ease;"
+               onmouseover="this.style.transform='scale(1.1)'"
+               onmouseout="this.style.transform=''">
+            </i>
+            <span>Déconnexion</span>
+        </a>
+
+    </nav>
+</aside>
+
+</aside>
+
 
         <!-- Main Content Area -->
         <main class="col-md-9 col-lg-10 py-4">
@@ -83,62 +112,165 @@ main.col-md-9.col-lg-10 {
             </section>
 
             <!-- Profile Section -->
-            <section class="mb-4 card p-3 border-0 shadow-sm">
-                <h2 class="h5 text-primary mb-3">Profil Académique</h2>
-                <div class="row">
-                    <div class="col-md-6">
-                        <p><strong>Nom:</strong> <span class="text-capitalize">{{ student.user.username|title }}</span></p>
-                        <p><strong>Filière:</strong> {{ student.profileetudiant_set.last.filiere.nom_filiere }}</p>
-                    </div>
-                    <div class="col-md-6">
-                        <p><strong>Niveau:</strong> {{ student.profileetudiant_set.last.niveau.nom_niveau }}</p>
-                        <p><strong>Semestre:</strong> {{ student.profileetudiant_set.last.semestre.nom_semestre }}</p>
-                    </div>
-                </div>
-                <p><strong>Année Académique:</strong> {{ current_year }}</p>
-                <a href="{% url 'roles:etudiant_dashboard' %}" class="btn btn-primary">Modifier le Profil</a>
-            </section>
+            <section class="mb-4 card p-4 border-0 shadow-sm rounded-4 bg-white" style="box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);">
+  <!-- Section Header -->
+  <div class="d-flex align-items-center mb-4">
+    <div class="bg-primary bg-opacity-10 text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 48px; height: 48px;">
+      <i class="bi bi-person-vcard fs-4"></i>
+    </div>
+    <h2 class="h4 fw-bold mb-0 text-primary">Profil Académique</h2>
+  </div>
 
+  {% if student.profileetudiant_set.last %}
+  <!-- Profile Content -->
+  <div class="row gy-4">
+    <div class="col-md-6">
+      <div class="d-flex align-items-start gap-3">
+        <i class="bi bi-person-circle text-muted fs-5"></i>
+        <div>
+          <div class="text-muted small">Nom</div>
+          <div class="fw-semibold text-capitalize">{{ student.user.username|title }}</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-start gap-3 mt-4">
+        <i class="bi bi-journal-text text-muted fs-5"></i>
+        <div>
+          <div class="text-muted small">Filière</div>
+          <div class="fw-semibold">{{ student.profileetudiant_set.last.filiere.nom_filiere }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-6">
+      <div class="d-flex align-items-start gap-3">
+        <i class="bi bi-bar-chart-line text-muted fs-5"></i>
+        <div>
+          <div class="text-muted small">Niveau</div>
+          <div class="fw-semibold">{{ student.profileetudiant_set.last.niveau.nom_niveau }}</div>
+        </div>
+      </div>
+      <div class="d-flex align-items-start gap-3 mt-4">
+        <i class="bi bi-calendar-event text-muted fs-5"></i>
+        <div>
+          <div class="text-muted small">Semestre</div>
+          <div class="fw-semibold">{{ student.profileetudiant_set.last.semestre.nom_semestre }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Academic Year -->
+  <div class="d-flex align-items-start gap-3 mt-4">
+    <i class="bi bi-clock-history text-muted fs-5"></i>
+    <div>
+      <div class="text-muted small">Année Académique</div>
+      <div class="fw-semibold">{{ current_year }}</div>
+    </div>
+  </div>
+
+  <!-- Action Button -->
+  <div class="mt-5">
+    <a href="{% url 'roles:etudiant_dashboard' %}" class="btn btn-primary d-inline-flex align-items-center gap-2 px-4 py-2 rounded-pill">
+      <i class="bi bi-pencil-fill"></i>
+      Modifier le Profil
+    </a>
+  </div>
+  {% else %}
+  <!-- Empty State -->
+  <div class="text-center text-muted py-5">
+    <i class="bi bi-person-x fs-1 text-secondary mb-3"></i>
+    <p class="mb-3">Votre profil académique n'est pas encore créé.</p>
+    <a href="{% url 'roles:etudiant_dashboard' %}" class="btn btn-outline-primary d-inline-flex align-items-center gap-2 rounded-pill">
+      <i class="bi bi-plus-circle"></i>
+      Créer mon profil
+    </a>
+  </div>
+  {% endif %}
+</section>
             <!-- Subjects Table -->
-            <section class="mb-4 card p-3 border-0 shadow-sm">
-                <h2 class="h5 text-primary mb-3">Matières Inscrites</h2>
-                <div class="table-responsive">
-                    <table class="table table-bordered table-hover">
-                        <thead class="table-light">
-                            <tr class="px-2 py-1">
-                                <th>Code</th>
-                                <th>Matière</th>
-                                <th>Type de matiere</th>
-                                <th>Semestre</th>
-                                <th>Niveau</th>
-                                <th>Notes</th>
-                            </tr>
-                        </thead>
-                        <tbody class="px-2 py-1">
-                            {% for matiere in student.matiereetudiant_set.all %}
-                            <tr>
-                                <td>{{ matiere.matiere.course_code }}</td>
-                                <td>{{ matiere.matiere.nom_matiere }}</td>
-                                <td>Spécifique</td>
-                                <td>{{ matiere.matiere.semestre.nom_semestre }}</td>
-                                <td>{{ matiere.matiere.niveau.nom_niveau }}</td>
-                                <td>-</td>
-                            </tr>
-                            {% endfor %}
-                            {% for matiere_commune in student.matierecommuneetudiant_set.all %}
-                            <tr>
-                                <td>{{ matiere_commune.matiere_commune.course_code }}</td>
-                                <td>{{ matiere_commune.matiere_commune.nom_matiere_commune }}</td>
-                                <td>Commun</td>
-                                <td>{{ matiere_commune.matiere_commune.semestre.nom_semestre }}</td>
-                                <td>{{ matiere_commune.matiere_commune.niveau.nom_niveau }}</td>
-                                <td>-</td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </section>
+           <section class="mb-4 card p-4 border-0 shadow-sm rounded-3" style="box-shadow: 0 6px 24px rgba(0, 0, 0, 0.08);">
+    
+    <h2 class="h4 fw-semibold text-primary mb-3 d-flex align-items-center gap-2">
+        <i class="bi bi-journal-bookmark-fill text-primary fs-5"></i> Matières Inscrites
+    </h2>
+
+    
+<div class="table-responsive">
+    <table class="table table-hover table-striped align-middle border border-light-subtle rounded-2 overflow-hidden">
+       <thead class="bg-primary text-white fw-semibold">
+    <tr>
+        <th class="px-3 py-3">
+            <i class="bi bi-hash me-1"></i>Code
+        </th>
+        <th class="px-3 py-3">
+            <i class="bi bi-journal-bookmark me-1"></i>Matière
+        </th>
+        <th class="px-3 py-3">
+            <i class="bi bi-tags me-1"></i>Type
+        </th>
+        <th class="px-3 py-3">
+            <i class="bi bi-calendar2-week me-1"></i>Semestre
+        </th>
+        <th class="px-3 py-3">
+            <i class="bi bi-mortarboard me-1"></i>Niveau
+        </th>
+        <th class="px-3 py-3 text-center">
+            <i class="bi bi-clipboard-check me-1"></i>Notes
+        </th>
+    </tr>
+</thead>
+
+        <tbody>
+            {% if student.matiereetudiant_set.all or student.matierecommuneetudiant_set.all %}
+                {% for matiere in student.matiereetudiant_set.all %}
+                <tr>
+                    <td class="px-3 py-3">{{ matiere.matiere.course_code }}</td>
+                    <td class="px-3 py-3">{{ matiere.matiere.nom_matiere }}</td>
+                    <td class="px-3 py-3">
+                        <span class="badge rounded-pill bg-info text-dark">
+                            <i class="bi bi-person-badge me-1"></i> Spécifique
+                        </span>
+                    </td>
+                    <td class="px-3 py-3">{{ matiere.matiere.semestre.nom_semestre }}</td>
+                    <td class="px-3 py-3">{{ matiere.matiere.niveau.nom_niveau }}</td>
+                    <td class="px-3 py-3 text-center text-muted">
+                        À venir <i class="bi bi-clock-history ms-1 text-muted" title="Notes à venir"></i>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% for matiere_commune in student.matierecommuneetudiant_set.all %}
+                <tr>
+                    <td class="px-3 py-3">{{ matiere_commune.matiere_commune.course_code }}</td>
+                    <td class="px-3 py-3">{{ matiere_commune.matiere_commune.nom_matiere_commune }}</td>
+                    <td class="px-3 py-3">
+                        <span class="badge rounded-pill bg-secondary text-dark">
+                            <i class="bi bi-people me-1"></i> Commun
+                        </span>
+                    </td>
+                    <td class="px-3 py-3">{{ matiere_commune.matiere_commune.semestre.nom_semestre }}</td>
+                    <td class="px-3 py-3">{{ matiere_commune.matiere_commune.niveau.nom_niveau }}</td>
+                    <td class="px-3 py-3 text-center text-muted">
+                        À venir <i class="bi bi-clock-history ms-1 text-muted" title="Notes à venir"></i>
+                    </td>
+                </tr>
+                {% endfor %}
+            {% else %}
+                <tr>
+                    <td colspan="6" class="text-center text-muted py-5">
+                        <div class="d-flex flex-column align-items-center">
+                            <i class="bi bi-inbox fs-1 text-secondary mb-3"></i>
+                            <div>Aucune matière inscrite</div>
+                            <small class="text-primary mt-1">Cliquez ici pour vous inscrire à des matières</small>
+                        </div>
+                    </td>
+                </tr>
+            {% endif %}
+        </tbody>
+    </table>
+</div>
+
+</section>
+
+
 
             <!-- Announcements -->
             <section class="card p-3 border-0 shadow-sm">
