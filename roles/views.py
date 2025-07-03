@@ -617,7 +617,20 @@ def _handle_existing_user(request, username, password):
         return render(request, 'roles/signin.html')
 
     login(request, user)
-    return redirect('roles:etudiant_dashboard') if user.role == 'etudiant' else redirect('roles:signin')
+    # Only change: check if etudiant has a profile, redirect accordingly
+    if user.role == 'etudiant':
+        from .models import Etudiant, ProfileEtudiant
+        try:
+            etudiant = Etudiant.objects.get(user=user)
+            has_profile = ProfileEtudiant.objects.filter(etudiant=etudiant).exists()
+            if has_profile:
+                return redirect('roles:student_homepage')
+            else:
+                return redirect('roles:etudiant_dashboard')
+        except Etudiant.DoesNotExist:
+            return redirect('roles:etudiant_dashboard')
+    else:
+        return redirect('roles:signin')
 
 def _create_active_user(pending_user):
     """Retrieve and activate existing user from pending user data."""
