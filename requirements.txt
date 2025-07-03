@@ -1,4 +1,4 @@
 
 Django>=5.0
 gunicorn>=22.0
-# Add database driver, e.g., psycopg2-binary>=2.9 for PostgreSQL
+psycopg2-binary>=2.9
