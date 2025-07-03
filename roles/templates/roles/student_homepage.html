@@ -31,6 +31,9 @@
                     </section>
 
         <style>
+   
+        
+       
 .container-fluid > .row {
     margin-left: 0 !important;
     margin-right: 0 !important;
@@ -49,9 +52,11 @@ main.col-md-9.col-lg-10 {
     margin-left: 0 !important;
     padding-left: 2rem !important;
     padding-right: 2rem !important;
-    background-color: #f3f4f5; /* light gray background */
+    background-color: #f8f9fa; /* light gray background */
 }
 </style>
+
+        </style>
 
             <!-- Success Modal -->
             <div class="modal fade" id="successModal" tabindex="-1" aria-labelledby="successModalLabel" aria-hidden="true">
@@ -73,7 +78,7 @@ main.col-md-9.col-lg-10 {
 
             <!-- Welcome Section -->
             <section class="mb-4">
-                <h1 class="h3 text-primary fw-semibold text-capitalize">Bienvenue, {{ student.user.username|title }}👋 !</h1>
+                <h1 class="h3 text-primary fw-semibold text-capitalize">Bienvenue, {{ student.user.username|title }}👋 </h1>
                 <p class="text-muted">Institut Management et Entrepreneuriat, Yaoundé - Année Académique {{ current_year }}</p>
             </section>
 
