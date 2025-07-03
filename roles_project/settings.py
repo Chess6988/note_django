@@ -28,12 +28,15 @@ SECRET_KEY = config('SECRET_KEY')
 
 
 DEBUG = config("DEBUG", default=False, cast=bool)
-ALLOWED_HOSTS = ["localhost", "127.0.0.1", "note-django-7h0i.onrender.com"]
+ALLOWED_HOSTS = ["localhost", "127.0.0.1", "note-django-8g29.onrender.com"]
 
 # Database configuration for Render (PostgreSQL)
+DATABASE_URL = config('DATABASE_URL')
+if not DATABASE_URL:
+    raise ValueError('DATABASE_URL environment variable is not set')
 DATABASES = {
     'default': dj_database_url.config(
-        default=config('DATABASE_URL'),
+        default=DATABASE_URL,
         conn_max_age=600,
         ssl_require=True
     )
