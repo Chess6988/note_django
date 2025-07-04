@@ -130,17 +130,17 @@ WSGI_APPLICATION = 'roles_project.wsgi.application'
 
 # New settings.py from migration from sqlite to postsql
 
-# Remove or comment out this block
-# DATABASES = {
-#     'default': {
-#         'ENGINE': 'django.db.backends.postgresql',
-#         'NAME': 'rolesdb',
-#         'USER': 'postgres',
-#         'PASSWORD': 'Chess6988',
-#         'HOST': 'localhost',
-#         'PORT': '5432',
-#     }
-# }
+#Remove or comment out this block
+DATABASES = {
+     'default': {
+         'ENGINE': 'django.db.backends.postgresql',
+         'NAME': 'rolesdb_test',  # Replace with your database name gotten from dump in powerschellpython manage.py makemigrations
+         'USER': 'postgres',
+       'PASSWORD': 'Chess6988',
+         'HOST': 'localhost',
+         'PORT': '5432',
+     }
+ }
 
 
 
