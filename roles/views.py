@@ -500,7 +500,8 @@ def _handle_post_request_signup(request, form, context):
         _store_pending_user_in_session(request, user)
         send_activation_email(user, request)
         messages.success(request, 'Activation email sent. Please check your email.')
-        return redirect('roles:signin')
+        # Stay on signup page, do not redirect
+        return render(request, 'roles/signup.html', {'form': DefaultSignUpForm()})
     except Exception as e:
         logger.error(f"Error during signup: {e}")
         messages.error(request, 'An error occurred. Please try again later.')
