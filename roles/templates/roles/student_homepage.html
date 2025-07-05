@@ -10,48 +10,48 @@
             ☰ Menu
         </button>
 
-      <aside id="sidebarMenu" class="collapse d-md-flex col-12 col-md-3 col-lg-2 bg-primary text-white flex-column p-3 shadow-sm" style="border-radius: 0 8px 8px 0;">
+<aside id="sidebarMenu" class="collapse d-md-flex col-12 col-md-3 col-lg-2 bg-primary text-white flex-column p-3 shadow-sm" style="border-radius: 0 8px 8px 0;">
     <nav class="nav nav-pills flex-column gap-1">
-
+        <!-- Tableau de Bord -->
         <a href="{% url 'roles:student_homepage' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
            style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
            onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
            onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
-            <i class="bi bi-speedometer2 me-2 fs-5"
-               style="transition: transform 0.2s ease;"
+            <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_3bhh7jlm.json" background="transparent" speed="1" style="width: 24px; height: 24px; margin-right: 8px;" loop autoplay></lottie-player>
+            <i class="bi bi-speedometer2 fs-5" style="transition: transform 0.2s ease; margin-right: 8px;"
                onmouseover="this.style.transform='scale(1.1)'"
-               onmouseout="this.style.transform=''">
-            </i>
+               onmouseout="this.style.transform=''"></i>
             <span>Tableau de Bord</span>
         </a>
 
+        <!-- Profil -->
         <a href="{% url 'roles:etudiant_dashboard' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
            style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
            onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
            onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
-            <i class="bi bi-person-circle me-2 fs-5"
-               style="transition: transform 0.2s ease;"
+            <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_jcikweum.json" background="transparent" speed="1" style="width: 24px; height: 24px; margin-right: 8px;" loop autoplay></lottie-player>
+            <i class="bi bi-person-circle fs-5" style="transition: transform 0.2s ease; margin-right: 8px;"
                onmouseover="this.style.transform='scale(1.1)'"
-               onmouseout="this.style.transform=''">
-            </i>
+               onmouseout="this.style.transform=''"></i>
             <span>Profil</span>
         </a>
 
-        <a href="{% url 'roles:logout' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
-           style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
-           onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
-           onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
-            <i class="bi bi-box-arrow-right me-2 fs-5"
-               style="transition: transform 0.2s ease;"
-               onmouseover="this.style.transform='scale(1.1)'"
-               onmouseout="this.style.transform=''">
-            </i>
-            <span>Déconnexion</span>
-        </a>
-
+        <!-- Déconnexion -->
+        <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
+            {% csrf_token %}
+            <button type="submit" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
+                    style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em; border: none; background: none;"
+                    onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
+                    onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''"
+                    title="Click to logout">
+                <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_lk80fpsm.json" background="transparent" speed="1" style="width: 24px; height: 24px; margin-right: 8px;" loop autoplay></lottie-player>
+                <i class="bi bi-box-arrow-right fs-5" style="transition: transform 0.2s ease; margin-right: 8px;"
+                   onmouseover="this.style.transform='scale(1.1)'"
+                   onmouseout="this.style.transform=''"></i>
+                <span>Déconnexion</span>
+            </button>
+        </form>
     </nav>
-</aside>
-
 </aside>
 
 
@@ -282,7 +282,7 @@ main.col-md-9.col-lg-10 {
             <footer class="bg-primary text-white py-3 mt-5">
                 <div class="container text-center">
                     <p class="mb-0">© {{ current_year }} Institut de Management et de l'Entrepreneuriat (IME). Tous droits réservés.</p>
-                    <p class="mb-0">Contact : info@ime.cm | +237 123 456 789</p>
+                    <p class="mb-0">Contact : info@ime.cm | +237 640 108 583</p>
                 </div>
             </footer>
             {% endblock %}
