@@ -342,3 +342,4 @@ class ProfileEtudiant(models.Model):
     class Meta:
         db_table = 'profile_etudiant'
         unique_together = ('etudiant', 'annee')
+
