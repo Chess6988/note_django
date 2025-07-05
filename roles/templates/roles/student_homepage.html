@@ -24,17 +24,6 @@
             <span>Tableau de Bord</span>
         </a>
 
-        <!-- Profil -->
-        <a href="{% url 'roles:etudiant_dashboard' %}" class="nav-link text-white d-flex align-items-center px-3 py-2 rounded"
-           style="transition: background 0.3s ease, transform 0.2s ease; font-weight: 500; letter-spacing: 0.03em;"
-           onmouseover="this.style.background='rgba(255,255,255,0.15)'; this.style.transform='translateX(2px)'; this.style.textShadow='0 1px 1px rgba(0,0,0,0.2)'"
-           onmouseout="this.style.background=''; this.style.transform=''; this.style.textShadow=''">
-            <lottie-player src="https://assets2.lottiefiles.com/packages/lf20_jcikweum.json" background="transparent" speed="1" style="width: 24px; height: 24px; margin-right: 8px;" loop autoplay></lottie-player>
-            <i class="bi bi-person-circle fs-5" style="transition: transform 0.2s ease; margin-right: 8px;"
-               onmouseover="this.style.transform='scale(1.1)'"
-               onmouseout="this.style.transform=''"></i>
-            <span>Profil</span>
-        </a>
 
         <!-- Déconnexion -->
         <form method="post" action="{% url 'roles:logout' %}" style="display: inline-block;">
@@ -168,12 +157,7 @@ main.col-md-9.col-lg-10 {
   </div>
 
   <!-- Action Button -->
-  <div class="mt-5">
-    <a href="{% url 'roles:etudiant_dashboard' %}" class="btn btn-primary d-inline-flex align-items-center gap-2 px-4 py-2 rounded-pill">
-      <i class="bi bi-pencil-fill"></i>
-      Modifier le Profil
-    </a>
-  </div>
+
   {% else %}
   <!-- Empty State -->
   <div class="text-center text-muted py-5">
