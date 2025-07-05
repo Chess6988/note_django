@@ -156,6 +156,11 @@ def superadmin_panel(request):
         return redirect('roles:signin')  # Namespaced
     return render(request, 'roles/superadmin_panel.html')
 
+from django.views.decorators.csrf import csrf_protect
+from django.views.decorators.http import require_POST
+
+@require_POST
+@csrf_protect
 def logout_view(request):
     logout(request)
     return redirect('roles:signin')  # or wherever you want to go after logout
@@ -178,6 +183,14 @@ def etudiant_dashboard(request):
     if request.user.role != 'etudiant':
         messages.error(request, 'Access denied.')
         return redirect('roles:signin')
+    # Redirect if profile already exists
+    from .models import ProfileEtudiant, Etudiant
+    try:
+        etudiant = request.user.etudiant_profile
+        if ProfileEtudiant.objects.filter(etudiant=etudiant).exists():
+            return redirect('roles:student_homepage')
+    except Exception:
+        pass  # If etudiant_profile does not exist, allow to proceed
     StudentProfileFormSet = formset_factory(StudentProfileForm, extra=1)
     context = _prepare_context()
     if request.method == 'POST':
