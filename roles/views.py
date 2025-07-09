@@ -707,8 +707,8 @@ def _activate_user(request, user):
     except Exception as e:
         logger.error(f"Error during activation for user {user.username}: {str(e)}")
         messages.error(request, 'An error occurred during activation.')
-        return redirect('roles:signin')
-
+        return redirect('roles:signin')        
+    
 def resend_activation(request):
     """Resend activation email."""
     if request.method == 'POST':
@@ -732,7 +732,7 @@ def _handle_resend_post_request(request):
             user = User.objects.get(pk=pending_user['pk'])
         else:
             # If not in session, try to find an inactive user with this email
-            user = User.objects.get(email=email, is_active=False)
+            user = User.objects.filter(email=email, is_active=False).first()
             # Store user data in session for activation
             _store_pending_user_in_session(request, user)
         
