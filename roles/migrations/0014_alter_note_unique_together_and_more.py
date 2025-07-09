@@ -35,7 +35,7 @@ class Migration(migrations.Migration):
         ),
         migrations.AddConstraint(
             model_name='note',
-            constraint=models.CheckConstraint(check=models.Q(models.Q(('matiere__isnull', False), ('matiere_commune__isnull', True)), models.Q(('matiere__isnull', True), ('matiere_commune__isnull', False)), _connector='OR'), name='check_matiere_or_matiere_commune'),
+            constraint=models.CheckConstraint(condition=models.Q(models.Q(('matiere__isnull', False), ('matiere_commune__isnull', True)), models.Q(('matiere__isnull', True), ('matiere_commune__isnull', False)), _connector='OR'), name='check_matiere_or_matiere_commune'),
         ),
         migrations.AddConstraint(
             model_name='note',

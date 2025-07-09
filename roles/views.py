@@ -507,7 +507,14 @@ def _handle_post_request_signup(request, form, context):
             for error in field.errors:
                 messages.error(request, f"{field.label}: {error}")
         return render(request, 'roles/signup.html', context)
-    
+
+    # Check if email is already used
+    email = form.cleaned_data.get('email')
+    from .models import User
+    if User.objects.filter(email=email).exists():
+        messages.error(request, 'This email is already registered.')
+        return render(request, 'roles/signup.html', context)
+
     try:
         user = _create_pending_user(form)
         _store_pending_user_in_session(request, user)
@@ -663,19 +670,18 @@ def _finalize_user_setup(request, user):
         request.session.modified = True
         
 
-def activate_account(request, uidb64, token):
-    """Activate user account via email token."""
-    try:
-        user = _get_user_from_session_and_uid(request, uidb64)
-        if not short_lived_token_generator.check_token(user, token):
-            logger.error(f"Token check failed for user {user.username}")
-            messages.error(request, 'Invalid or expired activation link.')
-            return redirect('roles:resend_activation')
 
+def activate_account(request, uidb64, token):
+    try:
+        uid = force_str(urlsafe_base64_decode(uidb64))
+        user = User.objects.get(pk=uid)
+    except (TypeError, ValueError, OverflowError, User.DoesNotExist):
+        user = None
+
+    if user is not None and short_lived_token_generator.check_token(user, token):
         return _activate_user(request, user)
-    except (TypeError, ValueError, OverflowError, User.DoesNotExist) as e:
-        logger.error(f"Invalid activation link: {str(e)}")
-        messages.error(request, 'Invalid activation link.')
+    else:
+        messages.error(request, 'Invalid or expired activation link.')
         return redirect('roles:resend_activation')
 
 def _get_user_from_session_and_uid(request, uidb64):
@@ -685,21 +691,17 @@ def _get_user_from_session_and_uid(request, uidb64):
         raise ValueError("No pending user data found.")
     return User.objects.get(pk=pending_user['pk'])
 
+
 def _activate_user(request, user):
-    """Activate user, create Etudiant if needed, and clean up session."""
     if user.is_active:
         messages.error(request, 'Account is already activated.')
         return redirect('roles:signin')
-    
     try:
         with transaction.atomic():
             user.is_active = True
             user.save()
             if user.role == 'etudiant' and not Etudiant.objects.filter(user=user).exists():
                 Etudiant.objects.create(user=user)
-            if 'pending_user' in request.session:
-                del request.session['pending_user']
-                request.session.modified = True
             messages.success(request, 'Account activated! Please sign in.')
             return redirect('roles:signin')
     except Exception as e:

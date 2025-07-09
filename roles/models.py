@@ -246,7 +246,7 @@ class Note(models.Model):
         db_table = 'notes'
         constraints = [
             models.CheckConstraint(
-                check=(
+                condition=(
                     models.Q(matiere__isnull=False, matiere_commune__isnull=True) |
                     models.Q(matiere__isnull=True, matiere_commune__isnull=False)
                 ),
