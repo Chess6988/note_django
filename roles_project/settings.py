@@ -131,7 +131,7 @@ WSGI_APPLICATION = 'roles_project.wsgi.application'
 # New settings.py from migration from sqlite to postsql
 # New settings.py from migration from sqlite to postsql
 # Remove or comment out this block
-
+'''
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -143,7 +143,7 @@ DATABASES = {
     }
 }
 
-
+'''
 
 # Password validation
 # https://docs.djangoproject.com/en/5.0/ref/settings/#auth-password-validators
