@@ -460,7 +460,12 @@ def send_activation_email(user_data, request):
         
     Raises:
         SMTPException: If email sending fails
+        ValueError: If user_data is invalid (missing pk or email)
     """
+    if not user_data.pk or not user_data.email:
+        raise ValueError("User must have a valid pk and email")
+    if not settings.DEFAULT_FROM_EMAIL:
+        raise ValueError('DEFAULT_FROM_EMAIL is not set')
     try:
         token = short_lived_token_generator.make_token(user_data)
         uid = urlsafe_base64_encode(force_bytes(user_data.pk))
@@ -512,7 +517,7 @@ def _handle_post_request_signup(request, form, context):
     email = form.cleaned_data.get('email')
     from .models import User
     if User.objects.filter(email=email).exists():
-        messages.error(request, 'This email is already registered.')
+        messages.error(request, 'A user with this email already exists')
         return render(request, 'roles/signup.html', context)
 
     try:
@@ -520,8 +525,8 @@ def _handle_post_request_signup(request, form, context):
         _store_pending_user_in_session(request, user)
         send_activation_email(user, request)
         messages.success(request, 'Activation email sent. Please check your email.')
-        # Stay on signup page, do not redirect
-        return render(request, 'roles/signup.html', {'form': DefaultSignUpForm()})
+        # Redirect to signup page to prevent duplicate email on refresh
+        return redirect('roles:etudiant_signup')
     except Exception as e:
         logger.error(f"Error during signup: {e}")
         messages.error(request, 'An error occurred. Please try again later.')
@@ -771,3 +776,4 @@ def fetch_subjects(request):
         'matieres': list(matieres),
         'matieres_communes': list(matieres_communes)
     })
+

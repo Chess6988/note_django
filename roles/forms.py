@@ -180,12 +180,12 @@ class DefaultSignUpForm(UserCreationForm):
         email = cleaned_data.get('email')
         first_name = cleaned_data.get('first_name')
         last_name = cleaned_data.get('last_name')
-        
-        if email and User.objects.filter(email=email).exists():
+        # Case-insensitive email uniqueness check
+        if email and User.objects.filter(email__iexact=email).exists():
             self.add_error('email', 'A user with this email already exists.')
-        if first_name and last_name and User.objects.filter(first_name=first_name, last_name=last_name).exists():
-            self.add_error(None, 'A user with this first and last name already exists.')
         
+        # Return cleaned data to ensure other validations are applied
+
         return cleaned_data
     
     
