@@ -506,6 +506,9 @@ def etudiant_signup(request):
 def _handle_post_request_signup(request, form, context):
     """Process POST request for signup."""
     if not form.is_valid():
+        # Add a generic error message for empty or invalid data, in addition to field errors
+        if not form.has_changed():
+            messages.error(request, 'Please fill out the required fields.')
         for error in form.non_field_errors():
             messages.error(request, error)
         for field in form:
@@ -520,10 +523,33 @@ def _handle_post_request_signup(request, form, context):
         messages.error(request, 'A user with this email already exists')
         return render(request, 'roles/signup.html', context)
 
+    # Only create user and proceed if session save succeeds
     try:
         user = _create_pending_user(form)
-        _store_pending_user_in_session(request, user)
-        send_activation_email(user, request)
+        try:
+            _store_pending_user_in_session(request, user)
+        except Exception as session_exc:
+            logger.error(f"Session save error during signup: {session_exc}")
+            # Delete the user that was just created, since session failed
+            user.delete()
+            # Flush the session to prevent Django middleware from trying to save it again
+            try:
+                request.session.flush()
+            except Exception as flush_exc:
+                logger.error(f"Session flush error after session save failure: {flush_exc}")
+            # Try to add a message, but ignore if it fails
+            try:
+                messages.error(request, 'An error occurred. Please try again.')
+            except Exception as msg_exc:
+                logger.error(f"Error adding message after session failure: {msg_exc}")
+            return render(request, 'roles/signup.html', context)
+        try:
+            send_activation_email(user, request)
+        except Exception as email_exc:
+            logger.error(f"Activation email error during signup: {email_exc}")
+            messages.error(request, 'An error occurred. Please try again.')
+            user.delete()
+            return render(request, 'roles/signup.html', context)
         messages.success(request, 'Activation email sent. Please check your email.')
         # Redirect to signup page to prevent duplicate email on refresh
         return redirect('roles:etudiant_signup')
@@ -736,15 +762,18 @@ def _handle_resend_post_request(request):
         if pending_user and pending_user['email'] == email:
             user = User.objects.get(pk=pending_user['pk'])
         else:
-            # If not in session, try to find an inactive user with this email
-            user = User.objects.filter(email=email, is_active=False).first()
-            # Store user data in session for activation
-            _store_pending_user_in_session(request, user)
-        
+            # Find any user with this email
+            user = User.objects.filter(email=email).first()
+            if user is None:
+                messages.error(request, 'No account found with this email.')
+                return render(request, 'roles/resend_activation.html', {'form': form})
+            if not user.is_active:
+                _store_pending_user_in_session(request, user)
+
         if user.is_active:
             messages.info(request, 'This account is already active. Please sign in.')
             return redirect('roles:signin')
-            
+
         send_activation_email(user, request)
         messages.success(request, 'Activation email sent. Please check your email.')
         return redirect('roles:signin')
