@@ -586,56 +586,104 @@ def _store_pending_user_in_session(request, user):
 def signin(request):
     """Handle user login."""
     if request.method == 'POST':
-        return _handle_post_request_signin(request)
-    
+        return _handle_post_request_signin_email(request)
     logger.debug("Rendering signin.html")
     return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
 
-def _handle_post_request_signin(request):
-    username = request.POST.get('username')
+
+def _handle_post_request_signin_email(request):
+    email = request.POST.get('email')
     password = request.POST.get('password')
     pending_user = request.session.get('pending_user')
     logger.debug(f"Session keys: {list(request.session.keys())}")
-    logger.debug(f"Signin attempt for {username}, pending_user: {pending_user}")
+    logger.debug(f"Signin attempt for {email}, pending_user: {pending_user}")
     try:
-        user = User.objects.get(username=username)
+        user = User.objects.get(email=email)
         if not user.is_active:
-            if pending_user and pending_user['username'] == username:
-                return _handle_pending_user(request, username, password, pending_user)
+            if pending_user and pending_user['email'] == email:
+                return _handle_pending_user_email(request, email, password, pending_user)
             messages.error(request, 'Please activate your account first.')
             return render(request, 'roles/signin.html')
-        return _handle_existing_user(request, username, password)
+        return _handle_existing_user_email(request, email, password)
     except User.DoesNotExist:
-        messages.error(request, 'Invalid username or password.')
+        messages.error(request, 'Invalid email or password.')
         return render(request, 'roles/signin.html')
     except IntegrityError:
         messages.error(request, 'Username or email already exists.')
-        logger.debug(f"Checking password for pending user {username}")
-        
+        logger.debug(f"Checking password for pending user {email}")
         try:
-            user = User.objects.get(username=username)
+            user = User.objects.get(email=email)
             if not user.check_password(password):
-                logger.error(f"Invalid password for pending user {username}")
+                logger.error(f"Invalid password for pending user {email}")
                 messages.error(request, 'Invalid password.')
                 return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
             # Activate the user
             user.is_active = True
             user.save()
             _finalize_user_setup(request, user)
-            logger.info(f"User {username} logged in, redirecting to etudiant_dashboard")
+            logger.info(f"User {email} logged in, redirecting to etudiant_dashboard")
             return HttpResponseRedirect(reverse('roles:etudiant_dashboard'))
         except User.DoesNotExist:
-            logger.error(f"User {username} not found")
+            logger.error(f"User {email} not found")
             messages.error(request, 'User not found.')
             return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
         except IntegrityError:
-            logger.error(f"IntegrityError: Username {username} or email already exists")
-            messages.error(request, 'Username or email already exists.')
+            logger.error(f"IntegrityError: Username {email} or email already exists")
+            messages.error(request, ' email already exists.')
             return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
         except Exception as e:
             logger.error(f"Error during signin: {e}")
             messages.error(request, 'An error occurred. Please try again.')
             return render(request, 'roles/signin.html', {'messages': messages.get_messages(request)})
+
+def _handle_pending_user_email(request, email, password, pending_user):
+    try:
+        user = User.objects.get(email=email)
+        if not user.check_password(password):
+            messages.error(request, 'Invalid password.')
+            return render(request, 'roles/signin.html')
+        with transaction.atomic():
+            user.is_active = True
+            user.save()
+            if user.role == 'etudiant' and not Etudiant.objects.filter(user=user).exists():
+                Etudiant.objects.create(user=user)
+            if 'pending_user' in request.session:
+                del request.session['pending_user']
+                request.session.modified = True
+            login(request, user)
+            return redirect('roles:etudiant_dashboard')
+    except Exception as e:
+        logger.error(f"Error in pending user signin: {e}")
+        messages.error(request, 'An error occurred. Please try again.')
+        return render(request, 'roles/signin.html')
+
+def _handle_existing_user_email(request, email, password):
+    user = authenticate(request, username=email, password=password)
+    if not user:
+        # Try manual authentication by email
+        try:
+            user = User.objects.get(email=email)
+            if not user.check_password(password):
+                messages.error(request, 'Invalid email or password.')
+                return render(request, 'roles/signin.html')
+        except User.DoesNotExist:
+            messages.error(request, 'Invalid email or password.')
+            return render(request, 'roles/signin.html')
+    login(request, user)
+    # Only change: check if etudiant has a profile, redirect accordingly
+    if user.role == 'etudiant':
+        from .models import Etudiant, ProfileEtudiant
+        try:
+            etudiant = Etudiant.objects.get(user=user)
+            has_profile = ProfileEtudiant.objects.filter(etudiant=etudiant).exists()
+            if has_profile:
+                return redirect('roles:student_homepage')
+            else:
+                return redirect('roles:etudiant_dashboard')
+        except Etudiant.DoesNotExist:
+            return redirect('roles:etudiant_dashboard')
+    else:
+        return redirect('roles:signin')
 
 def _handle_pending_user(request, username, password, pending_user):
     """Process signin for a pending user."""

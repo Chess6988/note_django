@@ -246,7 +246,7 @@ class Note(models.Model):
         db_table = 'notes'
         constraints = [
             models.CheckConstraint(
-                condition=(
+                check=(
                     models.Q(matiere__isnull=False, matiere_commune__isnull=True) |
                     models.Q(matiere__isnull=True, matiere_commune__isnull=False)
                 ),
@@ -254,12 +254,10 @@ class Note(models.Model):
             ),
             models.UniqueConstraint(
                 fields=['etudiant', 'matiere', 'annee'],
-                condition=models.Q(matiere__isnull=False),
                 name='unique_etudiant_matiere_annee'
             ),
             models.UniqueConstraint(
                 fields=['etudiant', 'matiere_commune', 'annee'],
-                condition=models.Q(matiere_commune__isnull=False),
                 name='unique_etudiant_matiere_commune_annee'
             )
         ]
