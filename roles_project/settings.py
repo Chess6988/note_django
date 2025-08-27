@@ -137,7 +137,7 @@ WSGI_APPLICATION = 'roles_project.wsgi.application'
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
-        'NAME': 'rolesdb_test',
+        'NAME': 'rolesdb', # rolesdb_test for render# 
         'USER': 'postgres',
         'PASSWORD': 'Chess6988',
         'HOST': 'localhost',
