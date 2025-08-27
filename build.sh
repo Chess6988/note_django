@@ -24,3 +24,6 @@ find . -type d -name "__pycache__" -delete
 # Run migrations
 python manage.py collectstatic --no-input
 python manage.py migrate
+
+
+apt-get update && apt-get install -y python3-dev libpq-dev gcc

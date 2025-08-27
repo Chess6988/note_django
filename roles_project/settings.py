@@ -133,7 +133,7 @@ WSGI_APPLICATION = 'roles_project.wsgi.application'
 # Remove or comment out this block for (databases)
 
 
-''''
+
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.postgresql',
@@ -144,7 +144,7 @@ DATABASES = {
         'PORT': '5432',
     }
 }
-''''
+
 
 
 
